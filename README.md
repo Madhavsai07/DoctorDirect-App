@@ -1,250 +1,304 @@
-README
-
-AquaSmart – Bluetooth Water Flow Meter & Leak Alarm App
-
-A mobile IoT application for monitoring household water flow through a Bluetooth Low Energy (BLE) water-flow sensor, calculating water usage, and detecting suspicious flow patterns that may indicate a leak.
-
-# The Problem
-
-- Household water leaks can remain unnoticed for long periods, wasting water and increasing expenses.
-- Users may not have continuous visibility into current water flow or accumulated water usage.
-- A simple flow sensor alone does not provide a complete mobile experience for monitoring, history, and leak alerts.
-- During the OJT, physical sensor hardware is unavailable, so controlled BLE telemetry simulation is needed for development and testing.
-# The Solution
-
-AquaSmart connects an Android mobile application to a physical BLE water-flow sensor. The app receives flow telemetry, validates and stores readings locally in SQLite, calculates water usage, analyzes flow patterns for possible leaks, and presents the results through a dashboard, charts, leak history, and an audible alarm.
-
-For OJT development and controlled testing only, a BLE simulator can temporarily provide scenario-driven telemetry when the physical sensor is unavailable. The simulator is not a production dependency.
-
-# Features
-
-| Feature | Scope |
-| --- | --- |
-| BLE water-flow sensor connection | Core |
-| Real-time flow-rate display | Core |
-| Telemetry parsing and validation | Core |
-| Local SQLite storage | Core |
-| Water usage calculation | Core |
-| Hourly, daily, and weekly usage charts | Core |
-| Pattern/state-based leak detection | Core |
-| Loud leak alarm | Core |
-| Leak history and event details | Core |
-| BLE disconnect and invalid-data handling | Core |
-| BLE simulator for controlled test scenarios | Development / Testing |
-| Testing and simulation controls | Development / Testing |
-| Water bill calculator | Stretch |
-| Usage reports and smart notifications | Future |
-| Multiple sensor support | Future |
-| Remote BLE shutoff valve control | Future |
-
-# Screens
-
-- Dashboard — current flow rate, connection status, usage summary, and leak status.
-- BLE Connection — sensor discovery, connection state, and reconnect feedback.
-- Usage — hourly, daily, and weekly consumption charts.
-- Leak History — previously detected leak events.
-- Leak Detail — details for an individual leak event.
-- Active Leak Alarm — prominent warning and audible alarm controls.
-- Settings — monitoring and alarm preferences.
-- Testing / Simulation Controls — development-only controls for generating controlled telemetry scenarios.
-# Tech Stack
-
-| Layer | Technology |
-| --- | --- |
-| Framework | React Native + Expo |
-| Language | JavaScript |
-| Routing | Expo Router |
-| State | Zustand |
-| Data Queries | TanStack Query where useful |
-| Database | expo-sqlite / SQLite |
-| BLE | react-native-ble-plx |
-| Audio | expo-av |
-| Charts | React Native-compatible charting library |
-| Testing | Jest + React Native Testing Library + Android E2E testing |
-| CI/CD | GitHub Actions + EAS Build |
-| Primary Platform | Android |
-
-# Quick Start
-
-## Prerequisites
-
-- Node.js LTS
-- npm
-- Git
-- Android device or Android Emulator
-- Expo development tooling compatible with the selected Expo SDK
-## Installation
-
-git clone <repository-url>
-
-cd aquasmart
-
-npm install
-
-npx expo start
-
-## Run on Android
-
-npx expo start --android
-
-For actual BLE integration, use a development build/environment that supports the required native BLE functionality. Do not assume Expo Go alone provides every native capability required by the final BLE implementation.
-
-# Architecture
-
-Production data path
-
-Physical BLE Water Flow Sensor
-
-↓ BLE
-
-AquaSmart Android App
-
-↓
-
-BLE Connection Service
-
-↓
-
-Telemetry Parser
-
-↓
-
-Telemetry Validation
-
-↓
-
-SQLite Repositories
-
-↓
-
-Usage Calculation + Leak Detection
-
-↓
-
-Dashboard / Charts / Leak History / Alarm
-
-Development and testing substitution
-
-BLE Simulator
-
-↓ controlled telemetry
-
-AquaSmart Android App
-
-↓
-
-Telemetry Parser + Validation + Analysis
-
-The production architecture is sensor-first: the physical BLE water-flow sensor is the intended real-world telemetry source. The simulator exists only to support OJT development and controlled tests.
-
-# Data Model
-
-- sensors — registered BLE sensor metadata and connection information.
-- flow_readings — timestamped flow-rate telemetry and data-quality information.
-- usage_records — calculated water consumption for defined time periods.
-- leak_events — detected suspicious-flow events, status, timestamps, and supporting information.
-- settings — monitoring and alarm preferences.
-# Leak Detection
-
-AquaSmart uses pattern/state-based leak detection rather than treating one flow-rate threshold as proof of a leak. The analysis can consider persistence, flow characteristics, interruptions, data quality, and recovery. A condition such as continuous suspicious flow for 30 minutes can be used as a controlled OJT test scenario, but it is not a universal definition of a household leak or a guarantee of real-world detection accuracy.
-
-# Development BLE Simulator
-
-- Normal flow
-- Continuous flow
-- Intermittent flow
-- Sudden high flow
-- No flow
-- Sensor error
-- Invalid packet
-- Missing packet
-- Duplicate packet
-- Out-of-order packet
-- Impossible flow value
-- BLE disconnect
-The simulator maintains expected scenario behavior so that validation and leak-detection results can be compared with known test conditions. Exact physical-sensor service UUIDs, characteristic UUIDs, packet layout, byte order, scaling, and status values remain TBD until the physical sensor hardware is selected.
-
-# Testing
-
-- Unit tests for repositories, telemetry parsing and validation, usage calculations, and leak detection.
-- Component tests for dashboard, charts, connection state, leak history, and alarm UI.
-- Integration tests covering telemetry through validation, persistence, usage analysis, and leak detection.
-- Android E2E tests for onboarding, BLE connection behavior, dashboard, leak alarm, and settings.
-- Controlled simulator scenarios for malformed, missing, duplicate, out-of-order, and abnormal telemetry.
-- Physical sensor validation is hardware-dependent and is not claimed as completed during the OJT.
-# Building the App
-
-npm install -g eas-cli
-
-eas login
-
-eas build --platform android --profile development
-
-eas build --platform android --profile internal
-
-The exact build profiles and Android application configuration should match the project's committed eas.json and deployment configuration.
-
-# Project Structure
-
-- app/ — Expo Router routes and screens.
-- components/ — reusable React Native UI components.
-- stores/ — Zustand client and UI state.
-- hooks/ — reusable React hooks and data-query hooks.
-- repositories/ — SQLite data-access layer.
-- database/ — SQLite client, schema, migrations, and seed data.
-- services/ — BLE, telemetry, usage, leak detection, alarm, and testing services.
-- theme/ — design tokens and theme utilities.
-- types/ — shared model and error definitions represented in JavaScript modules.
-- utils/ — date, unit, flow, and validation utilities.
-- __tests__/ — unit, component, and integration tests.
-- e2e/ — Android end-to-end tests.
-- docs/ — separate OJT documentation deliverables.
-- .github/ — CI/CD workflows and GitHub templates.
-# Documentation Index
-
-- 01 — Project Overview
-- 02 — Business Requirements Document (BRD)
-- 03 — Product Requirements Document (PRD)
-- 04 — UX Requirements
-- 05 — Technical Requirements Document (TRD)
-- 06 — High-Level Design (HLD)
-- 07 — Database / Data Design
-- 08 — Repository API Specification
-- 09 — Low-Level Design (LLD)
-- 10 — Frontend Architecture
-- 11 — Security Design
-- 12 — Testing Strategy
-- 13 — CI/CD Pipeline
-- 14 — Observability Design
-- 15 — Deployment Architecture
-- 16 — Cost Analysis
-- 17 — Project Roadmap
-- 18 — Team Responsibilities
-- 19 — GitHub Repository Structure
-- 20 — README
-- 21 — Architecture Decision Records (ADRs)
-# Privacy and Data Handling
-
-- The MVP is designed as a local-first mobile application without a required backend account.
-- Flow readings, usage history, leak events, and settings are stored locally in SQLite.
-- The MVP does not require a cloud backend for core monitoring and history features.
-- BLE permissions should be requested only when required and explained to the user.
-- Logs and diagnostics should avoid unnecessary sensitive information.
-# Project Information
-
-- Student: Chinthaginjala Madhav Sai Kiran
-- Roll No: 25100010700016
-- Year & Section: Sem 3 A
-- Project: Solo OJT
-- Mentor: Kshitiz Dhooria
-- Institution: Polaris School of Technology
-- Duration: 9 weeks
-- Project Type: Application Development / Mobile IoT
-- Target Users: Homeowners and Plumbers
-# License
-
-License terms can be finalized according to the OJT/project submission requirements.
-
-# Scope Note
-
-This README describes the intended OJT architecture and implementation scope. It does not claim that physical sensor integration has already been validated. Hardware-specific BLE protocol details remain subject to the selected sensor, while advanced capabilities such as remote BLE shutoff control remain future scope.
+# DoctorDirect
+
+> An offline-first healthcare mobile application connecting patients and doctors through appointment scheduling, WebRTC video consultations, AI-assisted clinical documentation, and synchronized offline records.
+
+![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Expo](https://img.shields.io/badge/Expo-1B1F23?style=for-the-badge&logo=expo&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![Jest](https://img.shields.io/badge/Jest-C21325?style=for-the-badge&logo=jest&logoColor=white)
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Key Features](#key-features)
+- [User Roles](#user-roles)
+- [AI Consultation Workflow](#ai-consultation-workflow)
+- [Technology Stack](#technology-stack)
+- [Project Structure](#project-structure)
+- [Offline-First Synchronization](#offline-first-synchronization)
+- [API Reference](#api-reference)
+- [Getting Started](#getting-started)
+- [Environment Configuration](#environment-configuration)
+- [Project Roadmap](#project-roadmap)
+- [Project Team](#project-team)
+- [Documentation](#documentation)
+
+---
+
+## Overview
+
+**DoctorDirect** is a mobile telemedicine platform built for patients and doctors:
+
+- **Patients** can search doctors by specialty, check live slot availability, book and manage video appointments, attend encrypted consultations, and access doctor-approved prescriptions and summaries—even offline.
+- **Doctors** can manage their consultation schedule, conduct peer-to-peer video sessions, review and edit LLM-drafted consultation notes generated from speech-to-text transcripts, and issue digitally approved prescriptions.
+
+---
+
+## System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client["Mobile App (React Native + Expo)"]
+        UI["Patient & Doctor UI"]
+        Redux["Redux Toolkit"]
+        SQLite[("Local SQLite Cache")]
+        Axios["Axios REST Client"]
+        WebRTC["WebRTC Client"]
+    end
+
+    subgraph Server["Backend & Real-Time Services"]
+        API["Node.js + Express API"]
+        Signaling["WebRTC Signaling"]
+        DB[("PostgreSQL Database")]
+    end
+
+    subgraph AI["AI Services"]
+        STT["Speech-to-Text"]
+        Groq["Groq API (LLM Summaries)"]
+    end
+
+    UI --> Redux
+    Redux --> SQLite
+    Redux --> Axios
+    UI --> WebRTC
+
+    Axios --> API
+    API --> DB
+
+    WebRTC --> Signaling
+    WebRTC -.-> STT
+    STT --> Groq
+    Groq --> API
+```
+
+---
+
+## Key Features
+
+- **Role-Based Authentication**: Secure onboarding and distinct dashboards for Patients and Doctors via JWT.
+- **Doctor Discovery**: Filter verified doctors by specialization, experience, consultation fee, and available hours.
+- **Appointment Scheduling**: Real-time slot locking, booking confirmation, cancellation, and rescheduling.
+- **WebRTC Video Consultations**: Encrypted peer-to-peer audio/video calling with call controls.
+- **AI-Assisted Documentation**: Automatic draft summary generation from consultation audio transcripts.
+- **Doctor Clinical Gate**: Mandatory physician review and approval before any clinical summary or prescription is published.
+- **Prescription Builder**: In-app digital prescription generation with medication details, dosage, duration, and doctor signature representation.
+- **Offline Access**: Local SQLite caching ensures past appointments, summaries, and prescriptions remain accessible without an active internet connection.
+
+---
+
+## User Roles
+
+| Capability | Patient | Doctor | Notes |
+| :--- | :---: | :---: | :--- |
+| Registration & Authentication | ✓ | ✓ | Role-specific onboarding and dashboards |
+| Doctor Search & Specialty Filter | ✓ | — | Browse doctors by medical domain |
+| View Doctor Profile & Fees | ✓ | — | Transparent credentials and fee display |
+| Book Appointment Slots | ✓ | — | Server-authoritative slot reservation |
+| Manage Schedule & Slots | — | ✓ | Doctors configure availability windows |
+| Join WebRTC Video Consultation | ✓ | ✓ | Mutual access to scheduled video room |
+| Review & Edit AI Draft Summary | — | ✓ | Exclusive doctor clinical review gate |
+| Approve Consultation Record | — | ✓ | Doctor authorization required to finalize |
+| Create & Sign Prescription | — | ✓ | Structured medication and dosage formulation |
+| View Prescriptions & Summaries | ✓ | ✓ | Saved locally for offline access |
+| Access Offline Records | ✓ | ✓ | Cached in device SQLite database |
+
+---
+
+## AI Consultation Workflow
+
+> **AI Safety Notice**: DoctorDirect uses AI strictly to assist with clinical note-taking, not to diagnose patients or replace physician judgment.
+
+```mermaid
+flowchart TD
+    A[Video Consultation] --> B[Temporary Audio Capture]
+    B --> C[Speech-to-Text Transcription]
+    C --> D[Consultation Transcript]
+    D --> E[Groq LLM Draft Summary]
+    E --> F[Doctor Review & Editing]
+    F --> G{Doctor Approved?}
+    G -->|No - Edit Needed| F
+    G -->|Yes - Approved| H[Final Consultation Record]
+    H --> I[Issue & Sign Prescription]
+    I --> J[Available to Patient & Doctor]
+```
+
+1. **Audio Capture & STT**: Temporary consultation audio is transcribed into text.
+2. **Draft Synthesis**: Groq-hosted LLMs structure the transcript into a formatted draft summary.
+3. **Clinical Review Gate**: The doctor edits errors, adds clinical context, and approves the record.
+4. **Publishing**: Only after explicit doctor sign-off is the record finalized and made available to the patient.
+
+---
+
+## Technology Stack
+
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Mobile** | React Native, Expo | Cross-platform mobile development (iOS/Android) |
+| **Language** | TypeScript | Type safety across client and server |
+| **Navigation** | React Navigation | Role-based navigation and protected route stacks |
+| **State** | Redux Toolkit | Centralized state management |
+| **Local Storage** | Expo SQLite | Embedded offline cache for appointments & records |
+| **HTTP Client** | Axios | REST API integration with token interceptors |
+| **Backend** | Node.js, Express.js | REST API server and business logic |
+| **Database** | PostgreSQL | Authoritative relational persistence |
+| **Telemedicine** | WebRTC | Peer-to-peer real-time video/audio streaming |
+| **AI / Speech** | Speech-to-Text, Groq API | Audio transcription & LLM clinical summarization |
+| **Testing** | Jest | Unit and integration testing |
+| **Build** | Expo EAS | Cloud builds and binary generation |
+
+---
+
+## Project Structure
+
+```text
+DoctorDirect-App/
+├── mobile/                   # React Native + Expo Client (Planned)
+│   ├── src/
+│   │   ├── components/       # Reusable UI components
+│   │   ├── navigation/       # Auth, Patient, and Doctor navigators
+│   │   ├── screens/          # Application views (Dashboard, Booking, Video)
+│   │   ├── store/            # Redux Toolkit slices and configuration
+│   │   ├── services/         # Axios API, WebRTC signaling, STT services
+│   │   ├── db/               # Expo SQLite schema, migrations, and sync
+│   │   └── utils/            # Helpers and offline state handlers
+│   ├── app.json              # Expo configuration
+│   └── package.json
+├── backend/                  # Node.js + Express API Server (Planned)
+│   ├── src/
+│   │   ├── controllers/      # Route handlers (auth, doctors, appointments)
+│   │   ├── middleware/       # JWT auth guards and role validation
+│   │   ├── routes/           # REST endpoint definitions
+│   │   ├── services/         # Groq LLM, STT, and database services
+│   │   ├── db/               # PostgreSQL connection pool and queries
+│   │   └── index.ts          # Server entry point
+│   └── package.json
+├── docs/                     # Specifications and architectural documentation
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Offline-First Synchronization
+
+DoctorDirect guarantees continuous access to critical medical information through a local-first caching strategy:
+
+- **Cached Locally (SQLite)**: Confirmed appointments, doctor profiles, finalized consultation summaries, and prescriptions.
+- **Server Authoritative**: Live slot availability, booking requests, and user authentication require active network connectivity to eliminate booking conflicts.
+- **Reconciliation**: When the client reconnects, it queries `/api/v1/sync?last_synced_at=<timestamp>` to fetch new and modified records. In all conflicts, the backend remains authoritative.
+
+---
+
+## API Reference
+
+Base URL: `/api/v1`
+
+| Method | Endpoint | Description | Auth |
+| :--- | :--- | :--- | :---: |
+| `POST` | `/auth/register` | Register a new patient or doctor | Public |
+| `POST` | `/auth/login` | Authenticate and obtain JWT token | Public |
+| `GET` | `/doctors` | Search doctors by specialization and availability | Bearer |
+| `GET` | `/doctors/:id` | Get detailed doctor profile | Bearer |
+| `GET` | `/doctors/:id/slots` | Fetch available appointment slots | Bearer |
+| `POST` | `/appointments` | Book an appointment slot | Patient |
+| `GET` | `/appointments` | List user appointments | Bearer |
+| `PATCH`| `/appointments/:id` | Cancel or reschedule an appointment | Bearer |
+| `POST` | `/consultations/:id/audio` | Submit consultation audio for STT | Doctor |
+| `GET` | `/consultations/:id/summary` | Fetch AI draft or approved summary | Bearer |
+| `PUT` | `/consultations/:id/summary` | Edit and formally approve clinical summary | Doctor |
+| `POST` | `/prescriptions` | Create and sign digital prescription | Doctor |
+| `GET` | `/prescriptions/:id` | Fetch prescription details | Bearer |
+| `GET` | `/sync` | Fetch updated records since last sync timestamp | Bearer |
+
+---
+
+## Getting Started
+
+### Prerequisites
+- **Node.js** v18+ and **npm**
+- **Expo CLI**: `npm install -g expo-cli`
+- **PostgreSQL** v14+ (for backend)
+
+### Setup & Installation
+```bash
+# 1. Clone repository
+git clone https://github.com/Madhavsai07/DoctorDirect-App.git
+cd DoctorDirect-App
+
+# 2. Setup backend
+cd backend && npm install
+
+# 3. Setup mobile client
+cd ../mobile && npm install
+```
+
+### Running Locally
+```bash
+# Start backend server
+cd backend && npm run dev
+
+# Start mobile app (Expo)
+cd mobile && npx expo start
+```
+
+---
+
+## Environment Configuration
+
+### Backend (`backend/.env`)
+```env
+PORT=5000
+DATABASE_URL=postgresql://postgres:password@localhost:5432/doctordirect
+JWT_SECRET=your_jwt_secret_key
+GROQ_API_KEY=your_groq_api_key
+```
+
+### Mobile (`mobile/.env`)
+```env
+EXPO_PUBLIC_API_BASE_URL=http://localhost:5000/api/v1
+EXPO_PUBLIC_SIGNALING_URL=ws://localhost:5000
+```
+
+---
+
+## Project Roadmap
+
+| Week | Focus Area | Deliverables |
+| :---: | :--- | :--- |
+| **W1** | Scope & Architecture | Project requirements, BRD/PRD, repo setup |
+| **W2** | UI/UX Design | Wireframes, component library, and design tokens |
+| **W3** | Database Design | PostgreSQL schema modeling and migration setup |
+| **W4** | Auth & Dashboards | JWT auth flows, patient home, and doctor dashboard |
+| **W5** | Booking Engine | Doctor catalog, slot management, and booking logic |
+| **W6** | Offline Sync | REST API endpoints, Expo SQLite integration, delta sync |
+| **W7** | WebRTC & AI Summary | Video calling room, STT pipeline, Groq LLM summary |
+| **W8** | Approval & Prescriptions | Doctor clinical review gate and digital prescription builder |
+| **W9** | Testing & EAS Build | Jest test suites, performance optimization, Expo EAS builds |
+| **W10** | Release & Demo | Final integration testing, bug bash, and project demo |
+
+---
+
+## Project Team
+
+| Member | Role | Details |
+| :--- | :--- | :--- |
+| **Chinthaginjala Madhav Sai Kiran** | Student Developer | Sem 3 A, Polaris School of Technology |
+| **Charan Tej Guniganti** | Student Developer | Sem 3 A, Polaris School of Technology |
+| **Kshitiz Dhooria Sir** | Project Mentor | Polaris School of Technology |
+
+---
+
+## Documentation
+
+Comprehensive project specifications, BRD/PRD, architecture designs, and API contracts will be maintained in the `docs/` directory as development progresses.
+
+---
+
+## License
+
+Developed for the On-the-Job Training (OJT) curriculum at Polaris School of Technology. All rights reserved.
