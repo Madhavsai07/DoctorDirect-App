@@ -1,15 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
+import authReducer from './slices/authSlice';
 
 /**
- * DoctorDirect Redux store — Milestone 1 foundation.
- *
- * No business-logic slices are added here yet.
- * Feature slices (auth, appointments, doctors, consultations, sync, etc.)
- * will be added incrementally in their respective milestones.
+ * DoctorDirect Redux Store
  */
 export const store = configureStore({
   reducer: {
-    // slices will be added here in later milestones
+    auth: authReducer,
   },
 });
 

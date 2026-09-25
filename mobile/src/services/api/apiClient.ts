@@ -31,12 +31,21 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+import { authService } from '../auth';
+
 /**
- * Request interceptor placeholder.
- * Auth token injection will be added in the Authentication milestone.
+ * Request interceptor: attaches active auth credentials / dev bypass headers.
  */
 apiClient.interceptors.request.use(
-  (config) => config,
+  async (reqConfig) => {
+    const user = await authService.getCurrentUser();
+    if (user) {
+      reqConfig.headers['x-dev-user-id'] = user.id;
+      reqConfig.headers['x-dev-role'] = user.role;
+      reqConfig.headers['x-dev-bypass'] = 'true';
+    }
+    return reqConfig;
+  },
   (error) => Promise.reject(error),
 );
 

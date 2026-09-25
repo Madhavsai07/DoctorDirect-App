@@ -2,6 +2,8 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import config from './config/env';
 import healthRouter from './routes/health.route';
+import patientRouter from './routes/patient.route';
+import doctorRouter from './routes/doctor.route';
 import { errorHandler } from './middleware/errorHandler';
 
 /**
@@ -23,6 +25,8 @@ function createApp(): Application {
 
   // ── Routes ────────────────────────────────────────────────────────────────
   app.use('/health', healthRouter);
+  app.use('/api/v1/patient', patientRouter);
+  app.use('/api/v1/doctor', doctorRouter);
 
   // Future routes (added in later milestones):
   // app.use('/api/v1/auth', authRouter);

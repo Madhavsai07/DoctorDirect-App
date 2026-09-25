@@ -1,47 +1,28 @@
+import React from 'react';
+import { Provider } from 'react-redux';
+import { NavigationContainer } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { store } from './src/store';
+import RootNavigator from './src/navigation/RootNavigator';
 
 /**
- * Milestone 1 — Project Foundation
+ * DoctorDirect App Root
  *
- * This is the temporary root component that proves the Expo application
- * starts correctly. DoctorDirect screens, navigation, and business logic
- * will be introduced in later milestones.
+ * Wraps the app with:
+ * 1. Redux Provider (central state store)
+ * 2. SafeAreaProvider (mobile device insets)
+ * 3. NavigationContainer (role-protected navigation stacks)
  */
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>DoctorDirect</Text>
-      <Text style={styles.subtitle}>Project Foundation Running</Text>
-      <Text style={styles.milestone}>Milestone 1 · Environment Setup</Text>
-      <StatusBar style="auto" />
-    </View>
+    <Provider store={store}>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <RootNavigator />
+          <StatusBar style="auto" />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </Provider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f4ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1a237e',
-    letterSpacing: 1,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#3949ab',
-    marginTop: 8,
-  },
-  milestone: {
-    fontSize: 13,
-    color: '#9e9e9e',
-    marginTop: 16,
-    letterSpacing: 0.5,
-  },
-});
