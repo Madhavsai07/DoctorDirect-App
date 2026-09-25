@@ -1,0 +1,18 @@
+-- DoctorDirect Milestone 2: Initial Schema Rollback
+-- Migration: 001_initial_schema_down.sql
+
+DROP TABLE IF EXISTS sync_metadata CASCADE;
+DROP TABLE IF EXISTS device_tokens CASCADE;
+DROP TABLE IF EXISTS prescriptions CASCADE;
+DROP TABLE IF EXISTS summaries CASCADE;
+DROP TABLE IF EXISTS transcripts CASCADE;
+DROP TABLE IF EXISTS consultations CASCADE;
+DROP TABLE IF EXISTS appointments CASCADE;
+DROP TABLE IF EXISTS slots CASCADE;
+DROP TABLE IF EXISTS availability CASCADE;
+DROP TABLE IF EXISTS doctors CASCADE;
+DROP TABLE IF EXISTS patients CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS specializations CASCADE;
+
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;

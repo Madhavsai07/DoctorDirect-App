@@ -1,0 +1,31 @@
+{
+  "name": "doctordirect-backend",
+  "version": "0.1.0",
+  "description": "DoctorDirect REST API server",
+  "main": "dist/server.js",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "migrate": "ts-node-dev --transpile-only src/db/migrate.ts up",
+    "migrate:down": "ts-node-dev --transpile-only src/db/migrate.ts down",
+    "migrate:status": "ts-node-dev --transpile-only src/db/migrate.ts status",
+    "migrate:reset": "ts-node-dev --transpile-only src/db/migrate.ts reset",
+    "seed": "ts-node-dev --transpile-only src/db/migrate.ts seed"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.15.30",
+    "@types/pg": "^8.23.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
+  }
+}
