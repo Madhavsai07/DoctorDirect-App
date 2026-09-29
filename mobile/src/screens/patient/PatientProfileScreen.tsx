@@ -1,13 +1,15 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, Text, TouchableOpacity } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
 import { colors, spacing, typography } from '../../theme';
 import { ScreenHeader, Card, Badge, Button, AppIcon } from '../../components/common';
+import { PatientPrescriptionHistoryModal } from '../../components/prescription';
 
 export default function PatientProfileScreen() {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
+  const [showPrescriptions, setShowPrescriptions] = useState(false);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -53,6 +55,25 @@ export default function PatientProfileScreen() {
         </View>
       </Card>
 
+      {/* Digital Prescriptions History */}
+      <Text style={styles.sectionTitle}>Medical Records</Text>
+      <Card variant="default" padding="lg" style={styles.infoCard}>
+        <TouchableOpacity
+          style={styles.prescriptionHistoryRow}
+          onPress={() => setShowPrescriptions(true)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.rxIconBox}>
+            <Text style={styles.rxIconText}>℞</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.recordTitle}>My Prescriptions</Text>
+            <Text style={styles.recordSubtitle}>View all signed doctor prescriptions</Text>
+          </View>
+          <Text style={styles.recordArrow}>→</Text>
+        </TouchableOpacity>
+      </Card>
+
       {/* Account Settings */}
       <Text style={styles.sectionTitle}>Care Settings</Text>
       <Card variant="default" padding="lg" style={styles.infoCard}>
@@ -80,11 +101,50 @@ export default function PatientProfileScreen() {
         size="md"
         style={styles.logoutButton}
       />
+
+      {/* Prescription History Modal */}
+      <PatientPrescriptionHistoryModal
+        visible={showPrescriptions}
+        onClose={() => setShowPrescriptions(false)}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  prescriptionHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  rxIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primarySubtle,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rxIconText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  recordTitle: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    color: colors.text.primary,
+  },
+  recordSubtitle: {
+    fontSize: typography.sizes.xs,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
+  recordArrow: {
+    fontSize: typography.sizes.md,
+    color: colors.text.muted,
+    fontWeight: 'bold',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

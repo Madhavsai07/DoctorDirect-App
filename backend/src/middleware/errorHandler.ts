@@ -3,6 +3,8 @@ import config from '../config/env';
 
 export interface AppError extends Error {
   statusCode?: number;
+  /** Alternative to statusCode used by service-layer thrown errors */
+  status?: number;
   code?: string;
 }
 
@@ -15,7 +17,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
-  let statusCode = err.statusCode ?? 500;
+  let statusCode = err.statusCode ?? err.status ?? 500;
   let message = err.message || 'Internal Server Error';
 
   // Handle common PostgreSQL database error codes
@@ -32,6 +34,10 @@ export function errorHandler(
       case '23502': // not_null_violation
         statusCode = 400;
         message = 'Missing required field.';
+        break;
+      case '22P02': // invalid_text_representation (e.g. invalid UUID format)
+        statusCode = 400;
+        message = 'Invalid input syntax (e.g. invalid UUID format).';
         break;
       case 'ECONNREFUSED':
       case '57P01': // admin_shutdown

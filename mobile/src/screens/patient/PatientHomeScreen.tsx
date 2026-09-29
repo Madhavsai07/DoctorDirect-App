@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAppSelector } from '../../store/hooks';
@@ -9,10 +9,12 @@ import {
   Badge,
   AppIcon,
 } from '../../components/common';
+import { PatientPrescriptionHistoryModal } from '../../components/prescription';
 
 export default function PatientHomeScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAppSelector((state) => state.auth);
+  const [prescriptionModalVisible, setPrescriptionModalVisible] = useState(false);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -92,6 +94,33 @@ export default function PatientHomeScreen() {
           </Text>
         </Card>
       </View>
+
+      {/* Prescriptions Quick Access */}
+      <Card
+        variant="elevated"
+        padding="lg"
+        onPress={() => setPrescriptionModalVisible(true)}
+        style={styles.prescriptionCard}
+      >
+        <View style={styles.prescriptionCardInner}>
+          <View style={[styles.iconCircle, styles.rxIconCircle]}>
+            <Text style={styles.rxSymbolLarge}>℞</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.prescriptionCardTitle}>My Prescriptions</Text>
+            <Text style={styles.prescriptionCardDesc}>
+              View all official digital prescriptions from your doctors
+            </Text>
+          </View>
+          <AppIcon name="chevron" size={16} color={colors.primary} />
+        </View>
+      </Card>
+
+      {/* Prescription History Modal */}
+      <PatientPrescriptionHistoryModal
+        visible={prescriptionModalVisible}
+        onClose={() => setPrescriptionModalVisible(false)}
+      />
 
       {/* Quick Medical Summary Card */}
       <Text style={styles.sectionHeading}>Medical Record Overview</Text>
@@ -261,5 +290,35 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
+  },
+  // Prescription quick-access card
+  prescriptionCard: {
+    marginBottom: spacing.xl,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  prescriptionCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  rxIconCircle: {
+    backgroundColor: colors.primarySubtle,
+  },
+  rxSymbolLarge: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  prescriptionCardTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold,
+    color: colors.text.primary,
+    marginBottom: 2,
+  },
+  prescriptionCardDesc: {
+    fontSize: typography.sizes.xs,
+    color: colors.text.secondary,
+    lineHeight: 16,
   },
 });

@@ -1,5 +1,10 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
+import doctorReducer from './slices/doctorSlice';
+import appointmentReducer from './slices/appointmentSlice';
+import consultationReducer from './slices/consultationSlice';
+import prescriptionReducer from './slices/prescriptionSlice';
+import notificationReducer from './slices/notificationSlice';
 
 /**
  * DoctorDirect Redux Store
@@ -7,6 +12,11 @@ import authReducer from './slices/authSlice';
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    doctor: doctorReducer,
+    appointment: appointmentReducer,
+    consultation: consultationReducer,
+    prescription: prescriptionReducer,
+    notification: notificationReducer,
   },
 });
 

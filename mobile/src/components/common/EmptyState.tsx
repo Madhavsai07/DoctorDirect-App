@@ -7,7 +7,8 @@ import { AppIcon, IconName } from './AppIcon';
 export interface EmptyStateProps {
   icon?: IconName | React.ReactNode;
   title: string;
-  message: string;
+  message?: string;
+  description?: string;
   actionTitle?: string;
   onAction?: () => void;
   style?: ViewStyle;
@@ -17,10 +18,12 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   icon = 'calendar',
   title,
   message,
+  description,
   actionTitle,
   onAction,
   style,
 }) => {
+  const displayMessage = message ?? description ?? '';
   return (
     <View style={[styles.container, style]}>
       <View style={styles.iconCircle}>
@@ -31,7 +34,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
         )}
       </View>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.message}>{message}</Text>
+      <Text style={styles.message}>{displayMessage}</Text>
       {actionTitle && onAction && (
         <Button
           title={actionTitle}

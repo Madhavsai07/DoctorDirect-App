@@ -1,5 +1,6 @@
 import config from './config/env';
 import createApp from './app';
+import { notificationService } from './services/notification.service';
 
 /**
  * DoctorDirect — Backend Server Entry Point
@@ -15,4 +16,14 @@ app.listen(config.port, () => {
     `[DoctorDirect] Server running on port ${config.port} (${config.nodeEnv})`,
   );
   console.log(`[DoctorDirect] Health: http://localhost:${config.port}/health`);
+  // In-app reminders are idempotent at the database level, so restarts and
+  // repeated intervals cannot duplicate an appointment reminder.
+  notificationService.createUpcomingAppointmentReminders().catch((err) =>
+    console.error('[Notifications] Initial reminder check failed:', err)
+  );
+  setInterval(() => {
+    notificationService.createUpcomingAppointmentReminders().catch((err) =>
+      console.error('[Notifications] Reminder check failed:', err)
+    );
+  }, 15 * 60 * 1000).unref();
 });

@@ -10,6 +10,7 @@ export interface ScreenHeaderProps {
   badgeVariant?: BadgeProps['variant'];
   rightAction?: React.ReactNode;
   style?: ViewStyle;
+  containerStyle?: ViewStyle;
 }
 
 export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
@@ -19,9 +20,10 @@ export const ScreenHeader: React.FC<ScreenHeaderProps> = ({
   badgeVariant = 'primary',
   rightAction,
   style,
+  containerStyle,
 }) => {
   return (
-    <View style={[styles.container, style]}>
+    <View style={[styles.container, style, containerStyle]}>
       <View style={styles.titleContainer}>
         {badgeLabel && (
           <Badge label={badgeLabel} variant={badgeVariant} style={styles.badge} />

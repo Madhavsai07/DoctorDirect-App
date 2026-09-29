@@ -1,152 +1,342 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  RefreshControl,
+  Modal,
+  TextInput,
+} from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { PatientAppointmentStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
-import { ScreenHeader, Card, Badge, Button, AppIcon, EmptyState } from '../../components/common';
+import {
+  ScreenHeader,
+  Card,
+  Badge,
+  Button,
+  AppIcon,
+  LoadingIndicator,
+  EmptyState,
+} from '../../components/common';
+import { useAppDispatch, useAppSelector } from '../../hooks';
+import {
+  loadPatientAppointments,
+  cancelAppointment,
+  clearActionError,
+} from '../../store/slices/appointmentSlice';
+import { Appointment, AppointmentStatus } from '../../types/appointment';
 
-export default function PatientAppointmentsScreen() {
+type Props = NativeStackScreenProps<PatientAppointmentStackParamList, 'AppointmentList'>;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDateTime(date: string, startTime: string, endTime: string): string {
+  const d = new Date(date + 'T12:00:00');
+  const dateStr = d.toLocaleDateString('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  });
+  const fmt = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hh = h % 12 || 12;
+    return `${hh}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+  return `${dateStr} · ${fmt(startTime)} – ${fmt(endTime)}`;
+}
+
+function isUpcoming(date: string, startTime: string): boolean {
+  const apptDate = new Date(`${date}T${startTime}`);
+  return apptDate >= new Date();
+}
+
+type StatusVariant = 'success' | 'info' | 'warning' | 'neutral' | 'error';
+
+function statusBadge(status: AppointmentStatus): { label: string; variant: StatusVariant } {
+  switch (status) {
+    case 'booked':      return { label: 'Pending', variant: 'warning' };
+    case 'confirmed':   return { label: 'Confirmed', variant: 'success' };
+    case 'in_progress': return { label: 'In Progress', variant: 'info' };
+    case 'completed':   return { label: 'Completed', variant: 'neutral' };
+    case 'cancelled':   return { label: 'Cancelled', variant: 'error' };
+    case 'rescheduled': return { label: 'Rescheduled', variant: 'info' };
+    case 'no_show':     return { label: 'No Show', variant: 'neutral' };
+    default:            return { label: status, variant: 'neutral' };
+  }
+}
+
+const CANCELLABLE: AppointmentStatus[] = ['booked', 'confirmed'];
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export default function PatientAppointmentsScreen({ navigation }: Props) {
+  const dispatch = useAppDispatch();
+  const { patientAppointments, isLoadingPatient, isActioning, actionError } =
+    useAppSelector((s) => s.appointment);
+
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
 
-  const handleJoinCall = (doctorName: string) => {
-    Alert.alert(
-      'Join Video Call',
-      `Connecting to secure telehealth room with ${doctorName}. Video call will become active 10 minutes before the scheduled time.`
-    );
+  // Cancel modal
+  const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    dispatch(loadPatientAppointments('all'));
+  }, [dispatch]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const upcomingAppointments = patientAppointments.filter((a) =>
+    isUpcoming(a.date, a.startTime) && a.status !== 'cancelled' && a.status !== 'completed'
+  );
+  const pastAppointments = patientAppointments.filter(
+    (a) => !isUpcoming(a.date, a.startTime) || a.status === 'cancelled' || a.status === 'completed'
+  );
+  const displayed = activeTab === 'upcoming' ? upcomingAppointments : pastAppointments;
+
+  const handleCancelPress = (appt: Appointment) => {
+    setCancelTarget(appt);
+    setCancelReason('');
   };
 
-  const handleViewPrescription = (doctorName: string) => {
-    Alert.alert(
-      'Clinical Prescription',
-      `Prescription from ${doctorName} is digitally signed and saved to your health record.`
+  const handleCancelConfirm = async () => {
+    if (!cancelTarget) return;
+    const result = await dispatch(
+      cancelAppointment({ appointmentId: cancelTarget.id, reason: cancelReason || undefined })
     );
+    if (cancelAppointment.fulfilled.match(result)) {
+      setCancelTarget(null);
+      setFeedbackMsg('Your appointment has been cancelled and the slot freed.');
+      setTimeout(() => setFeedbackMsg(null), 3500);
+    }
   };
+
+  if (isLoadingPatient && patientAppointments.length === 0) {
+    return <LoadingIndicator fullScreen message="Loading appointments…" />;
+  }
+
+  const initials = (name: string) =>
+    name
+      .split(' ')
+      .slice(0, 2)
+      .map((w) => w[0] || '')
+      .join('')
+      .toUpperCase();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ScreenHeader
-        title="Appointments"
-        subtitle="Manage upcoming teleconsultations and medical visits"
-      />
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isLoadingPatient} onRefresh={load} />}
+      >
+        <ScreenHeader
+          title="Appointments"
+          subtitle="Manage your upcoming and past consultations"
+        />
 
-      {/* Segmented Filter Control */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'upcoming' && styles.tabItemActive]}
-          onPress={() => setActiveTab('upcoming')}
-        >
-          <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>
-            Upcoming (1)
-          </Text>
-        </TouchableOpacity>
+        {/* Action Error Banner */}
+        {actionError && (
+          <View style={styles.errorBanner}>
+            <AppIcon name="warning" size={16} color={colors.status.error} />
+            <Text style={styles.errorBannerText}>{actionError}</Text>
+            <TouchableOpacity onPress={() => dispatch(clearActionError())}>
+              <Text style={styles.dismissText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'past' && styles.tabItemActive]}
-          onPress={() => setActiveTab('past')}
-        >
-          <Text style={[styles.tabText, activeTab === 'past' && styles.tabTextActive]}>
-            Past Visits (1)
-          </Text>
-        </TouchableOpacity>
-      </View>
+        {/* Feedback Success Banner */}
+        {feedbackMsg && (
+          <View style={styles.feedbackBanner}>
+            <AppIcon name="check" size={16} color={colors.status.success} />
+            <Text style={styles.feedbackBannerText}>{feedbackMsg}</Text>
+          </View>
+        )}
 
-      {/* Upcoming Consultations */}
-      {activeTab === 'upcoming' && (
-        <View style={styles.listContainer}>
-          <Card variant="default" padding="lg" style={styles.appointmentCard}>
-            <View style={styles.topRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>AS</Text>
-              </View>
-
-              <View style={styles.headerInfo}>
-                <Text style={styles.doctorName}>Dr. Aditi Sharma</Text>
-                <Text style={styles.specialty}>Cardiology</Text>
-              </View>
-
-              <Badge label="Confirmed" variant="success" size="sm" />
-            </View>
-
-            <View style={styles.detailsBox}>
-              <View style={styles.detailRow}>
-                <AppIcon name="calendar" size={14} color={colors.text.secondary} />
-                <Text style={styles.detailText}>Tomorrow, 10:30 AM – 11:00 AM</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <AppIcon name="video" size={14} color={colors.primary} />
-                <Text style={[styles.detailText, { color: colors.primary, fontWeight: '600' }]}>
-                  High-Definition Telehealth Video Call
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.actionRow}>
-              <Button
-                title="Join Video Call"
-                onPress={() => handleJoinCall('Dr. Aditi Sharma')}
-                variant="primary"
-                size="sm"
-                style={styles.actionBtn}
-              />
-              <Button
-                title="Reschedule"
-                onPress={() =>
-                  Alert.alert('Reschedule', 'Please choose a new time slot from the doctor calendar.')
-                }
-                variant="outline"
-                size="sm"
-                style={styles.actionBtn}
-              />
-            </View>
-          </Card>
+        {/* Tab Bar */}
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'upcoming' && styles.tabItemActive]}
+            onPress={() => setActiveTab('upcoming')}
+          >
+            <Text style={[styles.tabText, activeTab === 'upcoming' && styles.tabTextActive]}>
+              Upcoming ({upcomingAppointments.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabItem, activeTab === 'past' && styles.tabItemActive]}
+            onPress={() => setActiveTab('past')}
+          >
+            <Text style={[styles.tabText, activeTab === 'past' && styles.tabTextActive]}>
+              Past ({pastAppointments.length})
+            </Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      {/* Past Consultations */}
-      {activeTab === 'past' && (
-        <View style={styles.listContainer}>
-          <Card variant="default" padding="lg" style={styles.appointmentCard}>
-            <View style={styles.topRow}>
-              <View style={[styles.avatar, { backgroundColor: colors.surfaceSubtle }]}>
-                <Text style={[styles.avatarText, { color: colors.text.secondary }]}>RK</Text>
-              </View>
+        {/* List */}
+        {displayed.length === 0 ? (
+        <EmptyState
+            title={activeTab === 'upcoming' ? 'No Upcoming Appointments' : 'No Past Appointments'}
+            message={
+              activeTab === 'upcoming'
+                ? 'Browse doctors and book your first appointment.'
+                : 'Your completed and cancelled appointments will appear here.'
+            }
+            icon="calendar"
+          />
+        ) : (
+          <View style={styles.list}>
+            {displayed.map((appt) => {
+              const badge = statusBadge(appt.status);
+              const avInitials = initials(appt.doctorFullName.replace('Dr. ', ''));
+              const canCancel = CANCELLABLE.includes(appt.status);
 
-              <View style={styles.headerInfo}>
-                <Text style={styles.doctorName}>Dr. Rajesh Kumar</Text>
-                <Text style={styles.specialty}>General Medicine</Text>
-              </View>
+              return (
+                <Card key={appt.id} variant="default" padding="lg" style={styles.card}>
+                  {/* Header row */}
+                  <View style={styles.topRow}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>{avInitials}</Text>
+                    </View>
+                    <View style={styles.headerInfo}>
+                      <Text style={styles.doctorName}>{appt.doctorFullName}</Text>
+                      <Text style={styles.specialty}>{appt.specializationName}</Text>
+                    </View>
+                    <Badge label={badge.label} variant={badge.variant} size="sm" />
+                  </View>
 
-              <Badge label="Completed" variant="neutral" size="sm" />
-            </View>
+                  {/* Details */}
+                  <View style={styles.detailsBox}>
+                    <View style={styles.detailRow}>
+                      <AppIcon name="calendar" size={14} color={colors.text.secondary} />
+                      <Text style={styles.detailText}>
+                        {formatDateTime(appt.date, appt.startTime, appt.endTime)}
+                      </Text>
+                    </View>
+                    {appt.reasonForVisit && (
+                      <View style={styles.detailRow}>
+                        <AppIcon name="medical" size={14} color={colors.text.secondary} />
+                        <Text style={styles.detailText}>{appt.reasonForVisit}</Text>
+                      </View>
+                    )}
+                    {appt.cancellationReason && (
+                      <View style={styles.detailRow}>
+                        <AppIcon name="info" size={14} color="#ef4444" />
+                        <Text style={[styles.detailText, { color: '#ef4444' }]}>
+                          {appt.cancellationReason}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.detailRow}>
+                      <AppIcon name="rupee" size={14} color={colors.text.muted} />
+                      <Text style={styles.detailText}>
+                        ₹{appt.doctorConsultationFee.toFixed(0)} consultation fee
+                      </Text>
+                    </View>
+                  </View>
 
-            <View style={styles.detailsBox}>
-              <View style={styles.detailRow}>
-                <AppIcon name="calendar" size={14} color={colors.text.secondary} />
-                <Text style={styles.detailText}>14 Oct 2025 • 04:00 PM</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <AppIcon name="medical" size={14} color={colors.secondary} />
-                <Text style={styles.detailText}>Consultation Summary & Prescription Saved</Text>
-              </View>
-            </View>
+                  {/* Actions */}
+                  {(canCancel || appt.status === 'completed' || appt.status === 'in_progress') && (
+                    <View style={styles.actionRow}>
+                      {canCancel && (
+                        <Button
+                          title="Cancel"
+                          onPress={() => handleCancelPress(appt)}
+                          variant="outline"
+                          size="sm"
+                          style={styles.actionBtn}
+                        />
+                      )}
+                      {(appt.status === 'completed' || appt.status === 'in_progress') && (
+                        <Button
+                          title="View Summary"
+                          onPress={() =>
+                            navigation.navigate('PatientConsultation', {
+                              appointmentId: appt.id,
+                            })
+                          }
+                          variant="primary"
+                          size="sm"
+                          style={styles.actionBtn}
+                        />
+                      )}
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
 
-            <Button
-              title="View Prescription & Summary"
-              onPress={() => handleViewPrescription('Dr. Rajesh Kumar')}
-              variant="outline"
-              size="sm"
-              style={{ marginTop: spacing.sm }}
+      {/* Cancel Modal */}
+      <Modal
+        visible={!!cancelTarget}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCancelTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Cancel Appointment</Text>
+            <Text style={styles.modalSubtitle}>
+              Are you sure you want to cancel your appointment with{' '}
+              <Text style={{ fontWeight: typography.weights.bold }}>
+                {cancelTarget?.doctorFullName}
+              </Text>
+              ?
+            </Text>
+
+            <Text style={styles.reasonLabel}>Reason (optional)</Text>
+            <TextInput
+              style={styles.reasonInput}
+              placeholder="e.g. Schedule conflict, feeling better…"
+              placeholderTextColor={colors.text.muted}
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              multiline
+              numberOfLines={3}
+              maxLength={200}
             />
-          </Card>
+
+            <View style={styles.modalActions}>
+              <Button
+                title="Keep Appointment"
+                onPress={() => setCancelTarget(null)}
+                variant="outline"
+                size="md"
+                style={styles.modalBtn}
+                disabled={isActioning}
+              />
+              <Button
+                title={isActioning ? 'Cancelling…' : 'Yes, Cancel'}
+                onPress={handleCancelConfirm}
+                variant="primary"
+                size="md"
+                style={{ ...styles.modalBtn, backgroundColor: '#ef4444', borderColor: '#ef4444' }}
+                disabled={isActioning}
+              />
+            </View>
+          </View>
         </View>
-      )}
-    </ScrollView>
+      </Modal>
+    </>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   content: {
     padding: spacing.xl,
     paddingTop: spacing.section,
@@ -167,23 +357,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: spacing.borderRadius.sm,
   },
-  tabItemActive: {
-    backgroundColor: colors.primary,
-  },
+  tabItemActive: { backgroundColor: colors.primary },
   tabText: {
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semiBold,
     color: colors.text.secondary,
   },
-  tabTextActive: {
-    color: '#ffffff',
-  },
-  listContainer: {
-    gap: spacing.md,
-  },
-  appointmentCard: {
-    marginBottom: spacing.sm,
-  },
+  tabTextActive: { color: '#ffffff' },
+  list: { gap: spacing.md },
+  card: { marginBottom: spacing.sm },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -203,19 +385,13 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     color: colors.primary,
   },
-  headerInfo: {
-    flex: 1,
-  },
+  headerInfo: { flex: 1 },
   doctorName: {
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.bold,
     color: colors.text.primary,
   },
-  specialty: {
-    fontSize: typography.sizes.xs,
-    color: colors.text.secondary,
-    marginTop: 1,
-  },
+  specialty: { fontSize: typography.sizes.xs, color: colors.text.secondary, marginTop: 1 },
   detailsBox: {
     backgroundColor: colors.surfaceSubtle,
     padding: spacing.md,
@@ -223,20 +399,100 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.md,
   },
-  detailRow: {
+  detailRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  detailText: { fontSize: typography.sizes.xs, color: colors.text.secondary, flex: 1 },
+  actionRow: { flexDirection: 'row', gap: spacing.sm },
+  actionBtn: { flex: 1 },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.xl,
+    paddingBottom: spacing.xxxl,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.bold,
+    color: colors.text.primary,
+    marginBottom: spacing.sm,
+  },
+  modalSubtitle: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.secondary,
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+  reasonLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semiBold,
+    color: colors.text.secondary,
+    marginBottom: spacing.xs,
+  },
+  reasonInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: spacing.borderRadius.md,
+    padding: spacing.md,
+    fontSize: typography.sizes.sm,
+    color: colors.text.primary,
+    backgroundColor: colors.background,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: spacing.lg,
+  },
+  modalActions: { flexDirection: 'row', gap: spacing.md },
+  modalBtn: { flex: 1 },
+  cancelConfirmBtn: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+
+  // Banners
+  errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
-  },
-  detailText: {
-    fontSize: typography.sizes.xs,
-    color: colors.text.secondary,
-  },
-  actionRow: {
-    flexDirection: 'row',
+    backgroundColor: '#fee2e2',
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    borderRadius: spacing.borderRadius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     gap: spacing.sm,
   },
-  actionBtn: {
+  errorBannerText: {
     flex: 1,
+    fontSize: typography.sizes.xs,
+    color: '#991b1b',
+    fontWeight: typography.weights.medium,
+  },
+  dismissText: { fontSize: typography.sizes.sm, color: '#991b1b', fontWeight: 'bold' },
+  feedbackBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dcfce7',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    borderRadius: spacing.borderRadius.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  feedbackBannerText: {
+    flex: 1,
+    fontSize: typography.sizes.xs,
+    color: '#166534',
+    fontWeight: typography.weights.semiBold,
   },
 });

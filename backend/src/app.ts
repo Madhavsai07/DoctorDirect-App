@@ -2,19 +2,16 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import config from './config/env';
 import healthRouter from './routes/health.route';
+import prescriptionRouter from './routes/prescription.route';
 import patientRouter from './routes/patient.route';
 import doctorRouter from './routes/doctor.route';
+import appointmentRouter from './routes/appointment.route';
+import consultationRouter from './routes/consultation.route';
+import notificationRouter from './routes/notification.route';
 import { errorHandler } from './middleware/errorHandler';
 
 /**
  * Create and configure the Express application.
- *
- * Route registration follows the pattern:
- *   Route → Controller → Service → Repository → Database
- *
- * Only the /health route is mounted in Milestone 1.
- * Auth, doctor, appointment, consultation, and prescription routes
- * will be added in their respective milestones.
  */
 function createApp(): Application {
   const app = express();
@@ -27,13 +24,16 @@ function createApp(): Application {
   app.use('/health', healthRouter);
   app.use('/api/v1/patient', patientRouter);
   app.use('/api/v1/doctor', doctorRouter);
+  app.use('/api/v1/appointments', appointmentRouter);
+  app.use('/api/v1/consultations', consultationRouter);
+  app.use('/api/v1/notifications', notificationRouter);
 
   // Future routes (added in later milestones):
   // app.use('/api/v1/auth', authRouter);
   // app.use('/api/v1/doctors', doctorRouter);
   // app.use('/api/v1/appointments', appointmentRouter);
   // app.use('/api/v1/consultations', consultationRouter);
-  // app.use('/api/v1/prescriptions', prescriptionRouter);
+  app.use('/api/v1/prescriptions', prescriptionRouter);
   // app.use('/api/v1/sync', syncRouter);
 
   // ── 404 handler ──────────────────────────────────────────────────────────

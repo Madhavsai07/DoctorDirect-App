@@ -16,6 +16,11 @@ export type IconName =
   | 'chevron'
   | 'phone'
   | 'medical'
+  | 'close'
+  | 'back'
+  | 'rupee'
+  | 'person'
+  | 'warning'
   | 'info';
 
 export interface AppIconProps {
@@ -312,6 +317,88 @@ export const AppIcon: React.FC<AppIconProps> = ({
       return (
         <View style={containerStyle}>
           <Text style={{ fontSize: size * 0.9, color, fontWeight: '600', lineHeight: size }}>›</Text>
+        </View>
+      );
+
+    case 'back':
+      return (
+        <View style={containerStyle}>
+          <Text style={{ fontSize: size * 0.9, color, fontWeight: '600', lineHeight: size }}>‹</Text>
+        </View>
+      );
+
+    case 'close':
+      return (
+        <View style={containerStyle}>
+          <Text style={{ fontSize: size * 0.75, color, fontWeight: '700', lineHeight: size }}>✕</Text>
+        </View>
+      );
+
+    case 'rupee':
+      return (
+        <View style={containerStyle}>
+          <Text style={{ fontSize: size * 0.8, color, fontWeight: '600', lineHeight: size }}>₹</Text>
+        </View>
+      );
+
+    case 'person':
+      return (
+        <View style={containerStyle}>
+          {/* head */}
+          <View
+            style={{
+              width: size * 0.4,
+              height: size * 0.4,
+              borderRadius: size * 0.2,
+              backgroundColor: color,
+              alignSelf: 'center',
+              marginBottom: 1,
+            }}
+          />
+          {/* body */}
+          <View
+            style={{
+              width: size * 0.7,
+              height: size * 0.35,
+              borderTopLeftRadius: size * 0.35,
+              borderTopRightRadius: size * 0.35,
+              backgroundColor: color,
+              alignSelf: 'center',
+            }}
+          />
+        </View>
+      );
+
+    case 'warning':
+      return (
+        <View style={containerStyle}>
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderLeftWidth: size * 0.45,
+              borderRightWidth: size * 0.45,
+              borderBottomWidth: size * 0.8,
+              borderLeftColor: 'transparent',
+              borderRightColor: 'transparent',
+              borderBottomColor: color,
+              alignSelf: 'center',
+              justifyContent: 'center',
+            }}
+          />
+          <Text
+            style={{
+              position: 'absolute',
+              bottom: size * 0.1,
+              alignSelf: 'center',
+              fontSize: size * 0.38,
+              fontWeight: '800',
+              color: '#ffffff',
+              lineHeight: size * 0.45,
+            }}
+          >
+            !
+          </Text>
         </View>
       );
 
