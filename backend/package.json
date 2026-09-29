@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "ts-node-dev --transpile-only src/db/migrate.ts up",
+    "migrate:prod": "node dist/db/migrate.js up",
     "migrate:down": "ts-node-dev --transpile-only src/db/migrate.ts down",
     "migrate:status": "ts-node-dev --transpile-only src/db/migrate.ts status",
     "migrate:reset": "ts-node-dev --transpile-only src/db/migrate.ts reset",

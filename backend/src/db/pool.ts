@@ -7,8 +7,12 @@ import config from '../config/env';
  * Configured via DATABASE_URL environment variable.
  * Reuses connection pool across repositories and health checks.
  */
+const useSsl =
+  config.nodeEnv === 'production' || process.env.DATABASE_SSL === 'true';
+
 export const pool = new Pool({
   connectionString: config.databaseUrl,
+  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
