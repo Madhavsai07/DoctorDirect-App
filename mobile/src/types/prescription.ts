@@ -115,7 +115,7 @@ export function normalizePrescription(raw: RawPrescription): Prescription {
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
 
-    doctorFullName: doctorFullName.startsWith('Dr.') ? doctorFullName : `Dr. ${doctorFullName}`,
+    doctorFullName: `Dr. ${doctorFullName.replace(/^Dr\.?\s*/i, '')}`.trim(),
     doctorQualification: raw.doctor_qualification ?? null,
     specializationName: raw.specialization_name || 'General Physician',
 

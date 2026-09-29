@@ -15,10 +15,15 @@ export default function DoctorDashboardScreen() {
   const navigation = useNavigation<any>();
   const { user } = useAppSelector((state) => state.auth);
 
+  const rawFirst = user?.firstName ?? 'Aditi';
+  const rawLast = user?.lastName ?? 'Sharma';
+  const cleanFirst = rawFirst.replace(/^Dr\.?\s*/i, '');
+  const doctorDisplayName = `Dr. ${cleanFirst} ${rawLast}`.trim();
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader
-        title={`Dr. ${user?.firstName ?? 'Aditi'} ${user?.lastName ?? 'Sharma'}`}
+        title={doctorDisplayName}
         subtitle="Cardiology Practice • Clinical Workspace"
         badgeLabel="Doctor"
         badgeVariant="doctor"

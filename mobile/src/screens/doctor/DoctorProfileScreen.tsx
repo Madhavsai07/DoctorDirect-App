@@ -9,6 +9,9 @@ export default function DoctorProfileScreen() {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
 
+  const cleanFirst = (user?.firstName ?? 'Aditi').replace(/^Dr\.?\s*/i, '');
+  const doctorDisplayName = `Dr. ${cleanFirst} ${user?.lastName ?? 'Sharma'}`.trim();
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ScreenHeader
@@ -20,11 +23,11 @@ export default function DoctorProfileScreen() {
       <Card variant="elevated" padding="lg" style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {user?.firstName?.charAt(0) ?? 'A'}
+            {cleanFirst.charAt(0) || 'A'}
             {user?.lastName?.charAt(0) ?? 'S'}
           </Text>
         </View>
-        <Text style={styles.name}>Dr. {user?.firstName} {user?.lastName}</Text>
+        <Text style={styles.name}>{doctorDisplayName}</Text>
         <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.badgeRow}>
           <Badge label="Cardiology Specialist" variant="doctor" />

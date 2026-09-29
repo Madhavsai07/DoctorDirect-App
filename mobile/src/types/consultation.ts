@@ -114,7 +114,7 @@ export function normalizeConsultation(raw: RawConsultation): Consultation {
     updatedAt: raw.updated_at,
 
     doctorId: raw.doctor_id,
-    doctorFullName: `Dr. ${raw.doctor_first_name || ''} ${raw.doctor_last_name || ''}`.trim(),
+    doctorFullName: `Dr. ${(raw.doctor_first_name || '').replace(/^Dr\.?\s*/i, '')} ${raw.doctor_last_name || ''}`.trim(),
     doctorQualification: raw.doctor_qualification || '',
     specializationName: raw.specialization_name || 'General Medicine',
 

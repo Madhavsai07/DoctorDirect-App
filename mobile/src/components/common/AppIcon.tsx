@@ -19,6 +19,7 @@ export type IconName =
   | 'close'
   | 'back'
   | 'rupee'
+  | 'card'
   | 'person'
   | 'warning'
   | 'info';
@@ -338,6 +339,32 @@ export const AppIcon: React.FC<AppIconProps> = ({
       return (
         <View style={containerStyle}>
           <Text style={{ fontSize: size * 0.8, color, fontWeight: '600', lineHeight: size }}>₹</Text>
+        </View>
+      );
+
+    case 'card':
+      return (
+        <View style={containerStyle}>
+          <View
+            style={{
+              width: size * 0.9,
+              height: size * 0.62,
+              borderWidth: 1.5,
+              borderColor: color,
+              borderRadius: 3,
+              overflow: 'hidden',
+              justifyContent: 'flex-start',
+            }}
+          >
+            <View
+              style={{
+                width: '100%',
+                height: size * 0.16,
+                backgroundColor: color,
+                marginTop: size * 0.08,
+              }}
+            />
+          </View>
         </View>
       );
 

@@ -28,6 +28,7 @@ import {
   clearActionError,
 } from '../../store/slices/appointmentSlice';
 import { Appointment, AppointmentStatus } from '../../types/appointment';
+import { formatFee } from '../../types/doctor';
 
 type Props = NativeStackScreenProps<PatientAppointmentStackParamList, 'AppointmentList'>;
 
@@ -236,9 +237,9 @@ export default function PatientAppointmentsScreen({ navigation }: Props) {
                       </View>
                     )}
                     <View style={styles.detailRow}>
-                      <AppIcon name="rupee" size={14} color={colors.text.muted} />
+                      <AppIcon name="card" size={14} color={colors.text.muted} />
                       <Text style={styles.detailText}>
-                        ₹{appt.doctorConsultationFee.toFixed(0)} consultation fee
+                        {formatFee(appt.doctorConsultationFee)} consultation fee
                       </Text>
                     </View>
                   </View>

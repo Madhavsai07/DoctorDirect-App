@@ -278,8 +278,8 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
                 <Text style={styles.modalInfoText}>{selectedSlotLabel}</Text>
               </View>
               <View style={styles.modalInfoRow}>
-                <AppIcon name="rupee" size={16} color={colors.text.secondary} />
-                <Text style={styles.modalInfoText}>₹{formatFee(doc.consultationFee)}</Text>
+                <AppIcon name="card" size={16} color={colors.text.secondary} />
+                <Text style={styles.modalInfoText}>{formatFee(doc.consultationFee)} Consultation Fee</Text>
               </View>
             </View>
 

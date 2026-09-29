@@ -117,7 +117,7 @@ export function normalizeDoctor(raw: DoctorListResponse['doctors'][0]): Doctor {
     userId: raw.user_id,
     firstName: raw.first_name || '',
     lastName: raw.last_name || '',
-    fullName: `Dr. ${raw.first_name || ''} ${raw.last_name || ''}`.trim(),
+    fullName: `Dr. ${(raw.first_name || '').replace(/^Dr\.?\s*/i, '')} ${raw.last_name || ''}`.trim(),
     avatarUrl: raw.avatar_url,
     specializationId: raw.specialization_id,
     specializationName: raw.specialization_name || 'General Medicine',

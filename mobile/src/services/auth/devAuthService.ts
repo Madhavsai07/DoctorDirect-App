@@ -19,7 +19,7 @@ export const DEV_USERS: Record<'patient' | 'doctor', AuthUser> = {
     id: '22222222-2222-2222-2222-222222222201',
     email: 'dev.doctor@doctordirect.local',
     role: 'doctor',
-    firstName: 'Dr. Aditi',
+    firstName: 'Aditi',
     lastName: 'Sharma',
     phone: '+919876543210',
     profileId: '33333333-3333-3333-3333-333333333301',

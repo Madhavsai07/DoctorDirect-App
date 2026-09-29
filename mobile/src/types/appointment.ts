@@ -115,7 +115,7 @@ export function normalizeAppointment(raw: RawAppointment): Appointment {
 
     doctorFirstName: raw.doctor_first_name || '',
     doctorLastName: raw.doctor_last_name || '',
-    doctorFullName: `Dr. ${raw.doctor_first_name || ''} ${raw.doctor_last_name || ''}`.trim(),
+    doctorFullName: `Dr. ${(raw.doctor_first_name || '').replace(/^Dr\.?\s*/i, '')} ${raw.doctor_last_name || ''}`.trim(),
     doctorAvatarUrl: raw.doctor_avatar_url,
     doctorLicenseNumber: raw.doctor_license_number,
     doctorExperienceYears: expNum,
