@@ -1,16 +1,41 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView, Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, ScrollView, Text, ActivityIndicator } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
+import { clearNotifications } from '../../store/slices/notificationSlice';
 import { colors, spacing, typography } from '../../theme';
 import { ScreenHeader, Card, Badge, Button, AppIcon } from '../../components/common';
+import apiClient from '../../services/api/apiClient';
 
 export default function DoctorProfileScreen() {
   const dispatch = useAppDispatch();
   const { user } = useAppSelector((state) => state.auth);
 
-  const cleanFirst = (user?.firstName ?? 'Aditi').replace(/^Dr\.?\s*/i, '');
-  const doctorDisplayName = `Dr. ${cleanFirst} ${user?.lastName ?? 'Sharma'}`.trim();
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await apiClient.get('/doctor/me');
+        if (mounted && res.data) {
+          setProfile(res.data.profile);
+        }
+      } catch {
+        // Silently fall back to user state
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const cleanFirst = (user?.firstName ?? 'Doctor').replace(/^Dr\.?\s*/i, '');
+  const doctorDisplayName = `Dr. ${cleanFirst} ${user?.lastName ?? ''}`.trim();
+  const initials = `${cleanFirst.charAt(0) || 'D'}${user?.lastName?.charAt(0) ?? ''}`;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -22,16 +47,17 @@ export default function DoctorProfileScreen() {
       {/* Identity Card */}
       <Card variant="elevated" padding="lg" style={styles.profileCard}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {cleanFirst.charAt(0) || 'A'}
-            {user?.lastName?.charAt(0) ?? 'S'}
-          </Text>
+          <Text style={styles.avatarText}>{initials}</Text>
         </View>
         <Text style={styles.name}>{doctorDisplayName}</Text>
         <Text style={styles.email}>{user?.email}</Text>
         <View style={styles.badgeRow}>
-          <Badge label="Cardiology Specialist" variant="doctor" />
-          <Badge label="MBBS, MD" variant="neutral" />
+          {profile?.specialization_name && (
+            <Badge label={profile.specialization_name} variant="doctor" />
+          )}
+          {profile?.qualification && (
+            <Badge label={profile.qualification} variant="neutral" />
+          )}
         </View>
       </Card>
 
@@ -41,24 +67,34 @@ export default function DoctorProfileScreen() {
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Medical Registration</Text>
           <View style={styles.verifiedRow}>
-            <Text style={styles.infoValue}>MCI-2015-87654</Text>
-            <Badge label="Verified" variant="success" size="sm" />
+            <Text style={styles.infoValue}>{profile?.license_number || 'Not registered'}</Text>
+            {profile?.verification_status === 'approved' ? (
+              <Badge label="Verified" variant="success" size="sm" />
+            ) : (
+              <Badge label={profile?.verification_status || 'Pending'} variant="warning" size="sm" />
+            )}
           </View>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Clinical Experience</Text>
-          <Text style={styles.infoValue}>9 Years</Text>
+          <Text style={styles.infoValue}>
+            {profile?.experience_years !== undefined ? `${profile.experience_years} Years` : '—'}
+          </Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Consultation Rate</Text>
-          <Text style={styles.infoFee}>₹750.00 / session</Text>
+          <Text style={styles.infoFee}>
+            {profile?.consultation_fee !== undefined ? `$${profile.consultation_fee} / session` : '—'}
+          </Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Patient Satisfaction</Text>
-          <Text style={styles.infoValue}>4.90 / 5.00 (124 reviews)</Text>
+          <Text style={styles.infoLabel}>Directory Status</Text>
+          <Text style={styles.infoValue}>
+            {profile?.is_available ? 'Active & Listed' : 'Unlisted'}
+          </Text>
         </View>
       </Card>
 
@@ -84,7 +120,10 @@ export default function DoctorProfileScreen() {
       {/* Logout Action */}
       <Button
         title="Sign Out of Doctor Workspace"
-        onPress={() => dispatch(logoutUser())}
+        onPress={() => {
+          dispatch(clearNotifications());
+          dispatch(logoutUser());
+        }}
         variant="danger"
         size="md"
         style={styles.logoutButton}

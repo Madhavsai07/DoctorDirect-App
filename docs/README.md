@@ -260,8 +260,9 @@ Base URL: `/api/v1`
 | Method | Endpoint | Description | Auth | Status |
 | :--- | :--- | :--- | :---: | :---: |
 | `GET` | `/health` | Backend liveness check | Public | ✅ Live |
-| `POST` | `/auth/register` | Register a new patient or doctor | Public | Milestone 4 |
-| `POST` | `/auth/login` | Authenticate and obtain JWT token | Public | Milestone 4 |
+| `POST` | `/auth/register/patient` | Provision a patient profile for the verified Supabase identity | Supabase Bearer | Live |
+| `POST` | `/auth/register/doctor` | Provision a doctor profile for the verified Supabase identity | Supabase Bearer | Live |
+| `GET` | `/auth/me` | Retrieve application profile and database role | Supabase Bearer | Live |
 | `GET` | `/doctors` | Search doctors by specialization | Bearer | Milestone 5 |
 | `GET` | `/doctors/:id/slots` | Fetch available appointment slots | Bearer | Milestone 5 |
 | `POST` | `/appointments` | Book an appointment slot | Patient | Milestone 5 |

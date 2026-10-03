@@ -32,8 +32,22 @@ export type DoctorAppointmentStackParamList = {
   DoctorConsultation: { appointmentId: string };
 };
 
+export type AdminTabParamList = {
+  Dashboard: undefined;
+  Notifications: undefined;
+  Profile: undefined;
+};
+
+export type AdminStackParamList = {
+  AdminDashboard: undefined;
+  AdminDoctorDetail: { doctorId: string };
+};
+
 export type RootStackParamList = {
   Login: undefined;
   PatientApp: undefined;
   DoctorApp: undefined;
+  DoctorVerificationPending: undefined;
+  DoctorVerificationRejected: undefined;
+  AdminApp: undefined;
 };

@@ -47,7 +47,7 @@ export default function NotificationsScreen() {
         screen: opensConsultation ? 'DoctorConsultation' : 'DoctorAppointmentsList',
         ...(opensConsultation ? { params: { appointmentId: item.appointmentId } } : {}),
       });
-    } else {
+    } else if (role === 'patient') {
       navigation.navigate('Appointments', {
         screen: opensConsultation ? 'PatientConsultation' : 'AppointmentList',
         ...(opensConsultation ? { params: { appointmentId: item.appointmentId } } : {}),

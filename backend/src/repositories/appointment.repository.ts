@@ -64,6 +64,17 @@ export class AppointmentRepository {
   }
 
   /**
+   * Get the doctor_id associated with a slot.
+   */
+  async getSlotDoctorId(slotId: string): Promise<string | null> {
+    const res = await pool.query<{ doctor_id: string }>(
+      'SELECT doctor_id FROM slots WHERE id = $1',
+      [slotId]
+    );
+    return res.rows[0]?.doctor_id ?? null;
+  }
+
+  /**
    * Concurrency-safe slot booking with PostgreSQL transaction and FOR UPDATE lock.
    * Strictly enforces:
    * 1. Slot must exist and have status = 'available'.
@@ -124,9 +135,9 @@ export class AppointmentRepository {
         throw err;
       }
 
-      // 4. Validate doctor user is active and available
-      const doctorCheck = await client.query<{ is_active: boolean; is_available: boolean; user_id: string }>(
-        `SELECT u.is_active, d.is_available, u.id AS user_id
+      // 4. Validate doctor user is active, available, and approved
+      const doctorCheck = await client.query<{ is_active: boolean; is_available: boolean; verification_status: string; user_id: string }>(
+        `SELECT u.is_active, d.is_available, d.verification_status, u.id AS user_id
          FROM doctors d
          JOIN users u ON d.user_id = u.id
          WHERE d.id = $1`,
@@ -135,6 +146,11 @@ export class AppointmentRepository {
       if (doctorCheck.rowCount === 0 || !doctorCheck.rows[0].is_active || !doctorCheck.rows[0].is_available) {
         const err: any = new Error('Doctor is currently unavailable or inactive');
         err.status = 400;
+        throw err;
+      }
+      if (doctorCheck.rows[0].verification_status !== 'approved') {
+        const err: any = new Error('Cannot book appointment: doctor is not yet verified');
+        err.status = 403;
         throw err;
       }
 

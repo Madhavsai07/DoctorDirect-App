@@ -105,7 +105,7 @@ flowchart TD
 
 ## Key Features
 
-- **Role-Based Authentication**: Secure onboarding and distinct dashboards for Patients and Doctors via JWT.
+- **Role-Based Authentication**: Supabase email/password sessions with PostgreSQL-authoritative Patient and Doctor roles.
 - **Doctor Discovery**: Filter verified doctors by specialization, experience, consultation fee, and available hours.
 - **Appointment Scheduling**: Real-time slot locking, booking confirmation, cancellation, and rescheduling.
 - **WebRTC Video Consultations**: Encrypted peer-to-peer audio/video calling with call controls.
@@ -260,8 +260,9 @@ Base URL: `/api/v1`
 | Method | Endpoint | Description | Auth | Status |
 | :--- | :--- | :--- | :---: | :---: |
 | `GET` | `/health` | Backend liveness check | Public | ✅ Live |
-| `POST` | `/auth/register` | Register a new patient or doctor | Public | Milestone 4 |
-| `POST` | `/auth/login` | Authenticate and obtain JWT token | Public | Milestone 4 |
+| `POST` | `/auth/register/patient` | Provision a patient profile for a Supabase identity | Supabase Bearer | Live |
+| `POST` | `/auth/register/doctor` | Provision a doctor profile for a Supabase identity | Supabase Bearer | Live |
+| `GET` | `/auth/me` | Retrieve authenticated application profile and role | Supabase Bearer | Live |
 | `GET` | `/doctors` | Search doctors by specialization | Bearer | Milestone 5 |
 | `GET` | `/doctors/:id/slots` | Fetch available appointment slots | Bearer | Milestone 5 |
 | `POST` | `/appointments` | Book an appointment slot | Patient | Milestone 5 |
@@ -310,8 +311,8 @@ Copy `backend/.env.example` to `backend/.env` and update values:
 PORT=5001
 NODE_ENV=development
 DATABASE_URL=postgresql://postgres:password@localhost:5432/doctordirect
-JWT_SECRET=replace_with_a_long_random_secret
-JWT_EXPIRES_IN=7d
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 GROQ_API_KEY=replace_with_your_groq_api_key
 ```
 
@@ -321,9 +322,13 @@ Copy `mobile/.env.example` to `mobile/.env` and update values:
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://localhost:5001/api/v1
 EXPO_PUBLIC_SIGNALING_URL=ws://localhost:5001
+EXPO_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 ```
 
 > **Physical device note**: Replace `localhost` with your machine's LAN IP address (e.g. `192.168.1.50`) so your phone can reach the development server.
+
+Enable email/password in Supabase Auth; email confirmation is supported. Mobile sign-up creates the Supabase identity first and provisions the application profile through the authenticated backend. The backend validates each access token with Supabase and reads the role from PostgreSQL. Passwords are never sent to the backend or stored in PostgreSQL, Redux, or device storage. Never put a Supabase secret/service-role key in mobile configuration or source control.
 
 ---
 

@@ -1,12 +1,13 @@
 /**
- * DoctorDirect Authentication Types & Abstraction
- *
- * Defines the core user and service contracts.
- * Real authentication providers (Supabase, Firebase, Google OAuth)
- * will implement IAuthService in future milestones without changing app logic.
+ * Supabase identity and DoctorDirect application profile types.
  */
 
 export type UserRole = 'patient' | 'doctor' | 'admin';
+
+export interface AuthIdentity {
+  id: string;
+  email: string;
+}
 
 export interface AuthUser {
   id: string;
@@ -17,31 +18,57 @@ export interface AuthUser {
   phone?: string;
   profileId?: string; // Links to patients.id or doctors.id
   specialization?: string; // Present for doctors
+  verificationStatus?: 'pending' | 'approved' | 'rejected'; // Present for doctors
 }
 
 export interface AuthState {
+  supabaseUser: AuthIdentity | null;
   user: AuthUser | null;
   role: UserRole | null;
+  verificationStatus: 'pending' | 'approved' | 'rejected' | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   error: string | null;
-  devBypassActive: boolean;
 }
 
-export interface IAuthService {
-  /**
-   * Fetch current authenticated session/user.
-   */
-  getCurrentUser(): Promise<AuthUser | null>;
+export interface AuthBundle {
+  identity: AuthIdentity;
+  user: AuthUser;
+}
 
-  /**
-   * Development-only login bypass.
-   * Throws an error if called in a production build.
-   */
-  devLogin(role: 'patient' | 'doctor'): Promise<AuthUser>;
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
 
-  /**
-   * Terminate active session and clear cached credentials.
-   */
-  logout(): Promise<void>;
+export interface PatientRegistration {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+}
+
+export interface DoctorRegistration {
+  firstName: string;
+  lastName: string;
+  phone?: string;
+  specializationName: string;
+  licenseNumber: string;
+  experienceYears: number;
+  consultationFee: number;
+  qualification: string;
+  bio?: string;
+}
+
+export type RegistrationPayload =
+  | { role: 'patient'; profile: PatientRegistration }
+  | { role: 'doctor'; profile: DoctorRegistration };
+
+export interface RegistrationResult {
+  bundle: AuthBundle | null;
+  confirmationRequired: boolean;
 }

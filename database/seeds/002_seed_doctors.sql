@@ -2,13 +2,13 @@
 -- Adds doctors across all specializations with availability and slots
 
 -- 1. Insert Doctors as Users
-INSERT INTO users (id, email, phone, password_hash, role, first_name, last_name) VALUES
-  ('22222222-2222-2222-2222-222222222203', 'dr.vikram.patel@doctordirect.local', '+919876543221', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Vikram', 'Patel'),
-  ('22222222-2222-2222-2222-222222222204', 'dr.priya.nair@doctordirect.local', '+919876543222', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Priya', 'Nair'),
-  ('22222222-2222-2222-2222-222222222205', 'dr.arjun.mehta@doctordirect.local', '+919876543223', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Arjun', 'Mehta'),
-  ('22222222-2222-2222-2222-222222222206', 'dr.sneha.kulkarni@doctordirect.local', '+919876543224', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Sneha', 'Kulkarni'),
-  ('22222222-2222-2222-2222-222222222207', 'dr.rajesh.gupta@doctordirect.local', '+919876543225', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Rajesh', 'Gupta'),
-  ('22222222-2222-2222-2222-222222222208', 'dr.ananya.reddy@doctordirect.local', '+919876543226', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd', 'doctor', 'Ananya', 'Reddy')
+INSERT INTO users (id, email, phone, role, first_name, last_name) VALUES
+  ('22222222-2222-2222-2222-222222222203', 'dr.vikram.patel@doctordirect.com', '+919876543221', 'doctor', 'Vikram', 'Patel'),
+  ('22222222-2222-2222-2222-222222222204', 'dr.priya.nair@doctordirect.com', '+919876543222', 'doctor', 'Priya', 'Nair'),
+  ('22222222-2222-2222-2222-222222222205', 'dr.arjun.mehta@doctordirect.com', '+919876543223', 'doctor', 'Arjun', 'Mehta'),
+  ('22222222-2222-2222-2222-222222222206', 'dr.sneha.kulkarni@doctordirect.com', '+919876543224', 'doctor', 'Sneha', 'Kulkarni'),
+  ('22222222-2222-2222-2222-222222222207', 'dr.rajesh.gupta@doctordirect.com', '+919876543225', 'doctor', 'Rajesh', 'Gupta'),
+  ('22222222-2222-2222-2222-222222222208', 'dr.ananya.reddy@doctordirect.com', '+919876543226', 'doctor', 'Ananya', 'Reddy')
 ON CONFLICT (email) DO NOTHING;
 
 -- 2. Insert Doctor Profiles

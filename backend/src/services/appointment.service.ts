@@ -1,10 +1,12 @@
 import { appointmentRepository, DbAppointmentDetail } from '../repositories/appointment.repository';
 import { doctorService } from './doctor.service';
 import { userRepository } from '../repositories/user.repository';
+import { doctorRepository } from '../repositories/doctor.repository';
 
 export class AppointmentService {
   /**
-   * Book an available slot as a patient
+   * Book an available slot as a patient.
+   * Rejects bookings with unapproved doctors.
    */
   async bookAppointment(
     patientUserId: string,
@@ -15,6 +17,17 @@ export class AppointmentService {
       const err: any = new Error('Slot ID is required');
       err.status = 400;
       throw err;
+    }
+
+    // Verify that the doctor associated with this slot is approved
+    const slotDoctor = await appointmentRepository.getSlotDoctorId(slotId);
+    if (slotDoctor) {
+      const verificationStatus = await doctorRepository.getDoctorVerificationStatus(slotDoctor);
+      if (verificationStatus && verificationStatus !== 'approved') {
+        const err: any = new Error('Cannot book appointment: doctor is not yet verified');
+        err.status = 403;
+        throw err;
+      }
     }
 
     const patientId = await appointmentRepository.ensurePatientProfile(patientUserId);

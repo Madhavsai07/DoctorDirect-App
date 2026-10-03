@@ -160,6 +160,9 @@ const appointmentSlice = createSlice({
   name: 'appointment',
   initialState,
   reducers: {
+    clearAppointmentState() {
+      return initialState;
+    },
     clearActionError(state) {
       state.actionError = null;
     },
@@ -235,5 +238,5 @@ const appointmentSlice = createSlice({
   },
 });
 
-export const { clearActionError, clearError } = appointmentSlice.actions;
+export const { clearAppointmentState, clearActionError, clearError } = appointmentSlice.actions;
 export default appointmentSlice.reducer;

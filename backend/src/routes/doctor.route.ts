@@ -1,18 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { userRepository } from '../repositories/user.repository';
 import { doctorService } from '../services/doctor.service';
 
 const doctorRouter = Router();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 1. GENERAL / LISTING ROUTES (accessible to all authenticated users)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /api/v1/doctor/specializations
- * Returns all specializations.
- */
+// GET /api/v1/doctor/specializations — all specializations
 doctorRouter.get(
   '/specializations',
   requireAuth,
@@ -26,11 +19,7 @@ doctorRouter.get(
   }
 );
 
-/**
- * GET /api/v1/doctor/list
- * Returns doctor listing with optional search/filter by specialization.
- * Query params: search, specialization_id, limit, offset
- */
+// GET /api/v1/doctor/list — doctor listing with optional search/filter
 doctorRouter.get(
   '/list',
   requireAuth,
@@ -49,14 +38,7 @@ doctorRouter.get(
   }
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. DOCTOR-ONLY ROUTES (/me/...) — MUST BE DEFINED BEFORE /:doctorId
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /api/v1/doctor/me
- * Returns the authenticated doctor's own profile.
- */
+// GET /api/v1/doctor/me — authenticated doctor's own profile
 doctorRouter.get(
   '/me',
   requireAuth,
@@ -86,14 +68,12 @@ doctorRouter.get(
   }
 );
 
-/**
- * GET /api/v1/doctor/me/availability
- * Returns the authenticated doctor's availability windows.
- */
+// GET /api/v1/doctor/me/availability — doctor's availability windows
 doctorRouter.get(
   '/me/availability',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -105,15 +85,12 @@ doctorRouter.get(
   }
 );
 
-/**
- * POST /api/v1/doctor/me/availability
- * Adds a new availability window for the authenticated doctor.
- * Body: { day_of_week, start_time, end_time, slot_duration_minutes, is_active? }
- */
+// POST /api/v1/doctor/me/availability — add availability window
 doctorRouter.post(
   '/me/availability',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -125,14 +102,12 @@ doctorRouter.post(
   }
 );
 
-/**
- * PATCH /api/v1/doctor/me/availability/:availabilityId
- * Updates one of the authenticated doctor's availability windows.
- */
+// PATCH /api/v1/doctor/me/availability/:availabilityId — update availability window
 doctorRouter.patch(
   '/me/availability/:availabilityId',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -148,14 +123,12 @@ doctorRouter.patch(
   }
 );
 
-/**
- * DELETE /api/v1/doctor/me/availability/:availabilityId
- * Deactivates (soft-deletes) an availability window.
- */
+// DELETE /api/v1/doctor/me/availability/:availabilityId — deactivate availability window
 doctorRouter.delete(
   '/me/availability/:availabilityId',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -167,15 +140,12 @@ doctorRouter.delete(
   }
 );
 
-/**
- * GET /api/v1/doctor/me/slots
- * Returns the authenticated doctor's own slots for a date range.
- * Query params: from_date, to_date
- */
+// GET /api/v1/doctor/me/slots — doctor's own slots for a date range
 doctorRouter.get(
   '/me/slots',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -191,15 +161,12 @@ doctorRouter.get(
   }
 );
 
-/**
- * POST /api/v1/doctor/me/slots/generate
- * Generates slots from availability for the authenticated doctor.
- * Body: { from_date, to_date }
- */
+// POST /api/v1/doctor/me/slots/generate — generate slots from availability
 doctorRouter.post(
   '/me/slots/generate',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
@@ -215,20 +182,17 @@ doctorRouter.post(
   }
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. PARAMETERIZED ROUTES (/:doctorId) — DEFINED AFTER /me
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * GET /api/v1/doctor/:doctorId/profile
- * Returns a single doctor profile.
- */
+// GET /api/v1/doctor/:doctorId/profile — single doctor profile (defined after /me)
 doctorRouter.get(
   '/:doctorId/profile',
   requireAuth,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctor = await doctorService.getDoctorById(req.params.doctorId);
+      if (req.user?.role === 'patient' && doctor.verification_status !== 'approved') {
+        res.status(404).json({ error: 'Doctor not found' });
+        return;
+      }
       res.json({ doctor });
     } catch (err) {
       next(err);
@@ -236,16 +200,19 @@ doctorRouter.get(
   }
 );
 
-/**
- * GET /api/v1/doctor/:doctorId/slots
- * Returns existing slots for a doctor in a date range.
- * Query params: from_date (YYYY-MM-DD), to_date (YYYY-MM-DD)
- */
+// GET /api/v1/doctor/:doctorId/slots — slots for a doctor in a date range
 doctorRouter.get(
   '/:doctorId/slots',
   requireAuth,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (req.user?.role === 'patient') {
+        const doctor = await doctorService.getDoctorById(req.params.doctorId);
+        if (doctor.verification_status !== 'approved') {
+          res.status(404).json({ error: 'Doctor not found' });
+          return;
+        }
+      }
       const slots = await doctorService.getSlots(
         req.params.doctorId,
         req.query.from_date,
@@ -258,18 +225,21 @@ doctorRouter.get(
   }
 );
 
-/**
- * POST /api/v1/doctor/:doctorId/slots/generate
- * Generates slots for a date range from active availability windows.
- * Body: { from_date, to_date }
- */
+// POST /api/v1/doctor/:doctorId/slots/generate — generate slots for a date range
 doctorRouter.post(
   '/:doctorId/slots/generate',
   requireAuth,
+  requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const doctorProfile = await doctorService.getDoctorProfileByUserId(req.user!.id);
+      if (doctorProfile.doctor_id !== req.params.doctorId) {
+        res.status(403).json({ error: 'Doctors may only generate slots for their own profile.' });
+        return;
+      }
       const slots = await doctorService.generateSlots(
-        req.params.doctorId,
+        doctorProfile.doctor_id,
         req.body.from_date,
         req.body.to_date
       );

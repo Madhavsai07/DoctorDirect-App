@@ -36,9 +36,9 @@ CREATE TRIGGER trg_specializations_updated_at
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  auth_user_id UUID UNIQUE,
   email VARCHAR(255) NOT NULL UNIQUE,
   phone VARCHAR(20) UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
   role VARCHAR(20) NOT NULL CHECK (role IN ('patient', 'doctor', 'admin')),
   first_name VARCHAR(100) NOT NULL,
   last_name VARCHAR(100) NOT NULL,

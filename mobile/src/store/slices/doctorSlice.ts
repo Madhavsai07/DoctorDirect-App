@@ -4,7 +4,6 @@ import {
   fetchDoctors,
   fetchDoctorProfile,
   fetchDoctorSlots,
-  generateDoctorSlots,
   fetchMyAvailability,
   addAvailabilityWindow,
   updateAvailabilityWindow,
@@ -114,17 +113,10 @@ export const loadDoctorSlots = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      // First try generating slots (idempotent – ON CONFLICT DO NOTHING)
-      const data = await generateDoctorSlots(doctorId, fromDate, toDate);
+      const data = await fetchDoctorSlots(doctorId, fromDate, toDate);
       return data.slots.map(normalizeSlot);
-    } catch {
-      // Fallback: just read existing
-      try {
-        const data = await fetchDoctorSlots(doctorId, fromDate, toDate);
-        return data.slots.map(normalizeSlot);
-      } catch (e2: unknown) {
-        return rejectWithValue(e2 instanceof Error ? e2.message : 'Failed to load slots');
-      }
+    } catch (error: unknown) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load slots');
     }
   }
 );
@@ -210,6 +202,9 @@ export const doctorSlice = createSlice({
   name: 'doctor',
   initialState,
   reducers: {
+    clearDoctorState() {
+      return initialState;
+    },
     clearSelectedDoctor(state) {
       state.selectedDoctor = null;
       state.doctorSlots = [];
@@ -258,6 +253,8 @@ export const doctorSlice = createSlice({
       .addCase(loadMySlots.rejected, (state, a) => { state.isLoadingSlots = false; state.error = a.payload as string; });
   },
 });
+
+export const { clearDoctorState } = doctorSlice.actions;
 
 export const { clearSelectedDoctor, clearError } = doctorSlice.actions;
 export default doctorSlice.reducer;

@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { appointmentService } from '../services/appointment.service';
 
 const appointmentRouter = Router();
@@ -15,11 +15,12 @@ appointmentRouter.post(
   requireRole('patient'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { slot_id, reason_for_visit } = req.body;
+      const slotId = req.body.slot_id || req.body.slotId;
+      const reasonForVisit = req.body.reason_for_visit || req.body.reasonForVisit;
       const appointment = await appointmentService.bookAppointment(
         req.user!.id,
-        slot_id,
-        reason_for_visit
+        slotId,
+        reasonForVisit
       );
       res.status(201).json({ appointment });
     } catch (err) {
@@ -57,6 +58,7 @@ appointmentRouter.get(
   '/doctor',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const filter = req.query.status as 'upcoming' | 'past' | 'today' | 'all' | undefined;
@@ -96,6 +98,7 @@ appointmentRouter.patch(
   '/:id/confirm',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const appointment = await appointmentService.confirmAppointment(
@@ -118,6 +121,7 @@ appointmentRouter.patch(
   '/:id/status',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { status, cancellation_reason } = req.body;

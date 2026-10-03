@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { consultationService } from '../services/consultation.service';
 
 const consultationRouter = Router();
@@ -14,6 +14,7 @@ consultationRouter.post(
   '/',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { appointment_id } = req.body;
@@ -62,6 +63,7 @@ consultationRouter.patch(
   '/:id',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const consultation = await consultationService.updateConsultationDraft(
@@ -86,6 +88,7 @@ consultationRouter.patch(
   '/:id/complete',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const consultation = await consultationService.completeConsultation(

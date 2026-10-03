@@ -5,11 +5,11 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  Alert,
   Modal,
   RefreshControl,
 } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
+import { showAlert } from '../../utils/alert';
 import {
   ScreenHeader,
   Card,
@@ -61,9 +61,9 @@ function AddWindowModal({ visible, onClose, onSave, isSaving }: AddWindowModalPr
 
   const handleSave = () => {
     const d = Number(duration);
-    if (!startTime || !endTime) { Alert.alert('Error', 'Please enter start and end times.'); return; }
-    if (endTime <= startTime) { Alert.alert('Error', 'End time must be after start time.'); return; }
-    if (!Number.isInteger(d) || d <= 0) { Alert.alert('Error', 'Duration must be a positive number.'); return; }
+    if (!startTime || !endTime) { showAlert('Error', 'Please enter start and end times.'); return; }
+    if (endTime <= startTime) { showAlert('Error', 'End time must be after start time.'); return; }
+    if (!Number.isInteger(d) || d <= 0) { showAlert('Error', 'Duration must be a positive number.'); return; }
     onSave({ day_of_week: day, start_time: startTime + ':00', end_time: endTime + ':00', slot_duration_minutes: d });
   };
 
@@ -171,9 +171,9 @@ export default function DoctorAvailabilityScreen() {
     if (addAvailability.fulfilled.match(result)) {
       setAddModalVisible(false);
       load(); // Regenerate slots
-      Alert.alert('Success', 'Availability window added and slots generated.');
+      showAlert('Success', 'Availability window added and slots generated.');
     } else {
-      Alert.alert('Error', String(result.payload ?? 'Failed to add availability'));
+      showAlert('Error', String(result.payload ?? 'Failed to add availability'));
     }
   };
 
@@ -182,12 +182,12 @@ export default function DoctorAvailabilityScreen() {
     if (updateAvailability.fulfilled.match(result)) {
       load();
     } else {
-      Alert.alert('Error', String(result.payload ?? 'Failed to update'));
+      showAlert('Error', String(result.payload ?? 'Failed to update'));
     }
   };
 
   const handleRemove = (av: Availability) => {
-    Alert.alert(
+    showAlert(
       'Remove Window',
       `Remove ${DAY_NAMES[av.dayOfWeek]} ${formatTime(av.startTime)} – ${formatTime(av.endTime)}?`,
       [
@@ -200,7 +200,7 @@ export default function DoctorAvailabilityScreen() {
             if (removeAvailability.fulfilled.match(result)) {
               load();
             } else {
-              Alert.alert('Error', String(result.payload ?? 'Failed to remove'));
+              showAlert('Error', String(result.payload ?? 'Failed to remove'));
             }
           },
         },

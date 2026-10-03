@@ -72,10 +72,12 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: spacing.borderRadius.md,
+    borderRadius: spacing.borderRadius.lg,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    minHeight: 52,
+    ...spacing.shadows.sm,
   },
   // Variants
   primary: {
@@ -98,30 +100,34 @@ const styles = StyleSheet.create({
   disabled: {
     backgroundColor: colors.border,
     borderColor: colors.border,
-    opacity: 0.6,
+    opacity: 0.65,
   },
 
   // Sizes
   size_sm: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: spacing.borderRadius.sm,
+    borderRadius: spacing.borderRadius.md,
+    minHeight: 40,
   },
   size_md: {
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
-    borderRadius: spacing.borderRadius.md,
+    borderRadius: spacing.borderRadius.lg,
+    minHeight: 48,
   },
   size_lg: {
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xxl,
-    borderRadius: spacing.borderRadius.lg,
+    borderRadius: spacing.borderRadius.xl,
+    minHeight: 54,
   },
 
   // Text Base
   textBase: {
     fontWeight: typography.weights.semiBold,
     textAlign: 'center',
+    letterSpacing: 0.2,
   },
   // Text Variants
   text_primary: {

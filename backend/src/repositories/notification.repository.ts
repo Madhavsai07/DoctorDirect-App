@@ -11,7 +11,8 @@ export type NotificationType =
   | 'prescription_finalized'
   | 'new_appointment_booked'
   | 'patient_cancelled'
-  | 'upcoming_appointment_reminder';
+  | 'upcoming_appointment_reminder'
+  | 'doctor_verification_alert';
 
 export interface DbNotification {
   id: string;
@@ -22,6 +23,7 @@ export interface DbNotification {
   appointment_id: string | null;
   consultation_id: string | null;
   prescription_id: string | null;
+  doctor_id: string | null;
   is_read: boolean;
   created_at: string;
   read_at: string | null;
@@ -36,6 +38,7 @@ export interface CreateNotificationDto {
   appointmentId?: string | null;
   consultationId?: string | null;
   prescriptionId?: string | null;
+  doctorId?: string | null;
 }
 
 type Executor = Pick<PoolClient, 'query'>;
@@ -45,14 +48,14 @@ export class NotificationRepository {
   async createOnce(dto: CreateNotificationDto, executor: Executor = pool): Promise<DbNotification | null> {
     const result = await executor.query<DbNotification>(
       `INSERT INTO notifications
-        (recipient_user_id, type, title, message, appointment_id, consultation_id, prescription_id, event_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        (recipient_user_id, type, title, message, appointment_id, consultation_id, prescription_id, doctor_id, event_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (event_key) DO NOTHING
        RETURNING *`,
       [
         dto.recipientUserId, dto.type, dto.title, dto.message,
         dto.appointmentId ?? null, dto.consultationId ?? null,
-        dto.prescriptionId ?? null, dto.eventKey,
+        dto.prescriptionId ?? null, dto.doctorId ?? null, dto.eventKey,
       ]
     );
     return result.rows[0] ?? null;
@@ -61,7 +64,7 @@ export class NotificationRepository {
   async listForRecipient(userId: string, limit = 50, offset = 0): Promise<DbNotification[]> {
     const result = await pool.query<DbNotification>(
       `SELECT id, recipient_user_id, type, title, message, appointment_id, consultation_id,
-              prescription_id, is_read, created_at, read_at
+              prescription_id, doctor_id, is_read, created_at, read_at
        FROM notifications
        WHERE recipient_user_id = $1
        ORDER BY created_at DESC

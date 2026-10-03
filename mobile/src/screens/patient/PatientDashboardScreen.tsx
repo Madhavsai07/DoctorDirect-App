@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
+import { clearNotifications } from '../../store/slices/notificationSlice';
 import apiClient from '../../services/api/apiClient';
 
 export default function PatientDashboardScreen() {
@@ -98,7 +99,10 @@ export default function PatientDashboardScreen() {
 
       <TouchableOpacity
         style={styles.logoutButton}
-        onPress={() => dispatch(logoutUser())}
+        onPress={() => {
+          dispatch(clearNotifications());
+          dispatch(logoutUser());
+        }}
       >
         <Text style={styles.logoutButtonText}>Log Out of Patient Portal</Text>
       </TouchableOpacity>

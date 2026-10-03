@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { requireAuth, requireRole } from '../middleware/auth.middleware';
+import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { prescriptionService } from '../services/prescription.service';
 
 const prescriptionRouter = Router();
@@ -13,6 +13,7 @@ prescriptionRouter.post(
   '/',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorUserId = req.user!.id;
@@ -96,6 +97,7 @@ prescriptionRouter.patch(
   '/:id',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorUserId = req.user!.id;
@@ -120,6 +122,7 @@ prescriptionRouter.patch(
   '/:id/finalize',
   requireAuth,
   requireRole('doctor'),
+  requireApprovedDoctor,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctorUserId = req.user!.id;

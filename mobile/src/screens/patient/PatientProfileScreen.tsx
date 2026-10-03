@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Text, TouchableOpacity } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
+import { clearNotifications } from '../../store/slices/notificationSlice';
 import { colors, spacing, typography } from '../../theme';
 import { ScreenHeader, Card, Badge, Button, AppIcon } from '../../components/common';
 import { PatientPrescriptionHistoryModal } from '../../components/prescription';
@@ -96,7 +97,10 @@ export default function PatientProfileScreen() {
       {/* Logout Action */}
       <Button
         title="Sign Out"
-        onPress={() => dispatch(logoutUser())}
+        onPress={() => {
+          dispatch(clearNotifications());
+          dispatch(logoutUser());
+        }}
         variant="danger"
         size="md"
         style={styles.logoutButton}

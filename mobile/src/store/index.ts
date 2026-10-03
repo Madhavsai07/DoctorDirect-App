@@ -5,6 +5,7 @@ import appointmentReducer from './slices/appointmentSlice';
 import consultationReducer from './slices/consultationSlice';
 import prescriptionReducer from './slices/prescriptionSlice';
 import notificationReducer from './slices/notificationSlice';
+import adminReducer from './slices/adminSlice';
 
 /**
  * DoctorDirect Redux Store
@@ -17,6 +18,7 @@ export const store = configureStore({
     consultation: consultationReducer,
     prescription: prescriptionReducer,
     notification: notificationReducer,
+    admin: adminReducer,
   },
 });
 

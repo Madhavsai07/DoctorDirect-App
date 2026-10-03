@@ -8,6 +8,8 @@ import doctorRouter from './routes/doctor.route';
 import appointmentRouter from './routes/appointment.route';
 import consultationRouter from './routes/consultation.route';
 import notificationRouter from './routes/notification.route';
+import authRouter from './routes/auth.route';
+import adminRouter from './routes/admin.route';
 import { errorHandler } from './middleware/errorHandler';
 
 /**
@@ -22,11 +24,13 @@ function createApp(): Application {
 
   // ── Routes ────────────────────────────────────────────────────────────────
   app.use('/health', healthRouter);
+  app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/patient', patientRouter);
   app.use('/api/v1/doctor', doctorRouter);
   app.use('/api/v1/appointments', appointmentRouter);
   app.use('/api/v1/consultations', consultationRouter);
   app.use('/api/v1/notifications', notificationRouter);
+  app.use('/api/v1/admin', adminRouter);
 
   // Future routes (added in later milestones):
   // app.use('/api/v1/auth', authRouter);

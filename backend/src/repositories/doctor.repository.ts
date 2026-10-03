@@ -7,6 +7,8 @@ import { pool } from '../db/pool';
 export interface DbDoctorListing {
   doctor_id: string;
   user_id: string;
+  email?: string;
+  phone?: string | null;
   first_name: string;
   last_name: string;
   avatar_url: string | null;
@@ -19,6 +21,9 @@ export interface DbDoctorListing {
   qualification: string | null;
   is_available: boolean;
   rating: number;
+  verification_status: 'pending' | 'approved' | 'rejected';
+  verified_at: Date | null;
+  verified_by: string | null;
 }
 
 export interface DbSpecialization {
@@ -69,10 +74,19 @@ export class DoctorRepository {
     specializationId?: string;
     limit?: number;
     offset?: number;
+    verificationStatus?: 'pending' | 'approved' | 'rejected';
   }): Promise<DbDoctorListing[]> {
-    const { search, specializationId, limit = 50, offset = 0 } = opts;
+    const { search, specializationId, limit = 50, offset = 0, verificationStatus } = opts;
     const conditions: string[] = ['u.is_active = TRUE'];
     const params: unknown[] = [];
+
+    // Default to approved-only for patient-facing queries
+    if (verificationStatus) {
+      params.push(verificationStatus);
+      conditions.push(`d.verification_status = $${params.length}`);
+    } else {
+      conditions.push(`d.verification_status = 'approved'`);
+    }
 
     if (specializationId) {
       params.push(specializationId);
@@ -96,6 +110,8 @@ export class DoctorRepository {
       SELECT
         d.id            AS doctor_id,
         u.id            AS user_id,
+        u.email,
+        u.phone,
         u.first_name,
         u.last_name,
         u.avatar_url,
@@ -107,7 +123,10 @@ export class DoctorRepository {
         d.bio,
         d.qualification,
         d.is_available,
-        d.rating
+        d.rating,
+        d.verification_status,
+        d.verified_at,
+        d.verified_by
       FROM doctors d
       JOIN users u ON u.id = d.user_id
       JOIN specializations s ON s.id = d.specialization_id
@@ -124,6 +143,8 @@ export class DoctorRepository {
       SELECT
         d.id            AS doctor_id,
         u.id            AS user_id,
+        u.email,
+        u.phone,
         u.first_name,
         u.last_name,
         u.avatar_url,
@@ -135,7 +156,10 @@ export class DoctorRepository {
         d.bio,
         d.qualification,
         d.is_available,
-        d.rating
+        d.rating,
+        d.verification_status,
+        d.verified_at,
+        d.verified_by
       FROM doctors d
       JOIN users u ON u.id = d.user_id
       JOIN specializations s ON s.id = d.specialization_id
@@ -150,6 +174,8 @@ export class DoctorRepository {
       SELECT
         d.id            AS doctor_id,
         u.id            AS user_id,
+        u.email,
+        u.phone,
         u.first_name,
         u.last_name,
         u.avatar_url,
@@ -161,7 +187,10 @@ export class DoctorRepository {
         d.bio,
         d.qualification,
         d.is_available,
-        d.rating
+        d.rating,
+        d.verification_status,
+        d.verified_at,
+        d.verified_by
       FROM doctors d
       JOIN users u ON u.id = d.user_id
       JOIN specializations s ON s.id = d.specialization_id
@@ -169,6 +198,35 @@ export class DoctorRepository {
     `;
     const res = await pool.query<DbDoctorListing>(sql, [userId]);
     return res.rows[0] ?? null;
+  }
+
+  // ── Admin verification methods ──────────────────────────────────────────────
+
+  async updateVerificationStatus(
+    doctorId: string,
+    status: 'approved' | 'rejected',
+    adminUserId: string
+  ): Promise<DbDoctorListing | null> {
+    const res = await pool.query<{ id: string }>(
+      `UPDATE doctors
+       SET verification_status = $1,
+           verified_at = NOW(),
+           verified_by = $2,
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING id`,
+      [status, adminUserId, doctorId]
+    );
+    if (!res.rows[0]) return null;
+    return this.findDoctorById(doctorId);
+  }
+
+  async getDoctorVerificationStatus(doctorId: string): Promise<string | null> {
+    const res = await pool.query<{ verification_status: string }>(
+      'SELECT verification_status FROM doctors WHERE id = $1',
+      [doctorId]
+    );
+    return res.rows[0]?.verification_status ?? null;
   }
 
   async getAvailabilityForDoctor(doctorId: string): Promise<DbAvailability[]> {

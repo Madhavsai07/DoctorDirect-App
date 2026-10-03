@@ -1,30 +1,22 @@
-const BASE_URL = 'http://localhost:5001/api/v1';
+const BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-// Test Actors
-const DOC1_USER_ID = '22222222-2222-2222-2222-222222222201'; // Dr. Aditi Sharma (Correct Doctor)
-const DOC2_USER_ID = '22222222-2222-2222-2222-222222222203'; // Dr. Vikram Patel (Wrong Doctor)
-const PATIENT_USER_ID = '22222222-2222-2222-2222-222222222202'; // Rahul Verma (Correct Patient)
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`Set ${name} in the local environment before running this test.`);
+  return value;
+}
 
-const doc1Headers = {
-  'Content-Type': 'application/json',
-  'x-dev-bypass': 'true',
-  'x-dev-role': 'doctor',
-  'x-dev-user-id': DOC1_USER_ID,
-};
+function bearerHeaders(tokenName: string) {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${requiredEnv(tokenName)}`,
+  };
+}
 
-const doc2Headers = {
-  'Content-Type': 'application/json',
-  'x-dev-bypass': 'true',
-  'x-dev-role': 'doctor',
-  'x-dev-user-id': DOC2_USER_ID,
-};
-
-const patientHeaders = {
-  'Content-Type': 'application/json',
-  'x-dev-bypass': 'true',
-  'x-dev-role': 'patient',
-  'x-dev-user-id': PATIENT_USER_ID,
-};
+const DOCTOR_ID = requiredEnv('TEST_DOCTOR_ID');
+const doc1Headers = bearerHeaders('DOCTOR_ACCESS_TOKEN');
+const doc2Headers = bearerHeaders('OTHER_DOCTOR_ACCESS_TOKEN');
+const patientHeaders = bearerHeaders('PATIENT_ACCESS_TOKEN');
 
 async function request(url: string, options: any = {}) {
   const res = await fetch(url, options);
@@ -51,7 +43,7 @@ async function runMilestone8Verification() {
     const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
     await request(
-      `${BASE_URL}/doctor/33333333-3333-3333-3333-333333333301/slots/generate`,
+      `${BASE_URL}/doctor/${DOCTOR_ID}/slots/generate`,
       {
         method: 'POST',
         headers: doc1Headers,
@@ -61,7 +53,7 @@ async function runMilestone8Verification() {
 
     // Fetch available future slots
     const slotsRes = await request(
-      `${BASE_URL}/doctor/33333333-3333-3333-3333-333333333301/slots?from_date=${fromDate}&to_date=${nextWeek}`,
+      `${BASE_URL}/doctor/${DOCTOR_ID}/slots?from_date=${fromDate}&to_date=${nextWeek}`,
       { headers: patientHeaders }
     );
     const availableSlots = (slotsRes.data.slots || []).filter(

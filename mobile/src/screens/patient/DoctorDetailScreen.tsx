@@ -5,7 +5,6 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  Alert,
   RefreshControl,
   Modal,
   TextInput,
@@ -14,6 +13,7 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PatientDoctorStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
+import { showAlert } from '../../utils/alert';
 import {
   Card,
   Badge,
@@ -69,7 +69,7 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
   // Show actionError in alert when it appears
   useEffect(() => {
     if (actionError) {
-      Alert.alert('Booking Failed', actionError, [
+      showAlert('Booking Failed', actionError, [
         { text: 'OK', onPress: () => dispatch(clearActionError()) },
       ]);
     }
@@ -92,7 +92,7 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
       // Refresh slots to mark this one as booked
       const { fromDate, toDate } = getNextTwoWeeks();
       dispatch(loadDoctorSlots({ doctorId, fromDate, toDate }));
-      Alert.alert(
+      showAlert(
         '✅ Appointment Booked!',
         `Your appointment with ${selectedDoctor?.fullName} is confirmed.\n\nYou can view it in the Appointments tab.`,
         [{ text: 'Great!' }]

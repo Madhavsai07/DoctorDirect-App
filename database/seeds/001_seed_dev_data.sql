@@ -12,9 +12,9 @@ INSERT INTO specializations (id, name, description, icon) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- 2. Insert Development Test Users (Non-production development accounts)
-INSERT INTO users (id, email, phone, password_hash, role, first_name, last_name) VALUES
-  ('22222222-2222-2222-2222-222222222201', 'dev.doctor@doctordirect.local', '+919876543210', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd1', 'doctor', 'Aditi', 'Sharma'),
-  ('22222222-2222-2222-2222-222222222202', 'dev.patient@doctordirect.local', '+919876543211', '$2b$10$devHashDoctorDirectTestOnlyDoNotUseInProd2', 'patient', 'Rahul', 'Verma')
+INSERT INTO users (id, email, phone, role, first_name, last_name) VALUES
+  ('22222222-2222-2222-2222-222222222201', 'dev.doctor@doctordirect.com', '+919876543210', 'doctor', 'Aditi', 'Sharma'),
+  ('22222222-2222-2222-2222-222222222202', 'dev.patient@doctordirect.com', '+919876543211', 'patient', 'Rahul', 'Verma')
 ON CONFLICT (email) DO NOTHING;
 
 -- 3. Insert Doctor Profile

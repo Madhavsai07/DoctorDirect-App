@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Text } from 'react-native';
+import { StyleSheet, ScrollView, Alert, Text, View, TouchableOpacity } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { devLogin } from '../../store/slices/authSlice';
-import { isDevBypassAllowed } from '../../services/auth';
+import { loginUser, registerUser } from '../../store/slices/authSlice';
+import { DoctorRegistration, PatientRegistration, RegistrationPayload } from '../../types/auth';
 import { colors, spacing, typography } from '../../theme';
 import {
   Button,
@@ -10,108 +10,415 @@ import {
   ScreenHeader,
   ErrorView,
   Input,
+  DatePickerInput,
 } from '../../components/common';
+import {
+  validateEmail,
+  validatePassword,
+  validateName,
+  validatePhone,
+  validateDateOfBirth,
+  validateSpecialization,
+  validateLicenseNumber,
+  validateExperienceYears,
+  validateConsultationFee,
+  validateQualification,
+  sanitizePhoneInput,
+  sanitizeDigitsOnly,
+  sanitizeDecimalInput,
+} from '../../utils/validation';
 
 export default function LoginScreen() {
   const dispatch = useAppDispatch();
-  const { isLoading, error } = useAppSelector((state) => state.auth);
+  const { isLoading, error: authError } = useAppSelector((state) => state.auth);
 
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [role, setRole] = useState<'patient' | 'doctor'>('patient');
+
+  // Form field state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [emergencyContactName, setEmergencyContactName] = useState('');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
+  const [specializationName, setSpecializationName] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [experienceYears, setExperienceYears] = useState('');
+  const [consultationFee, setConsultationFee] = useState('');
+  const [qualification, setQualification] = useState('');
+  const [bio, setBio] = useState('');
 
-  const handleDevLogin = async (role: 'patient' | 'doctor') => {
-    if (!isDevBypassAllowed()) {
-      Alert.alert(
-        'Access Notice',
-        'Development login is restricted to development builds.'
-      );
-      return;
-    }
-    dispatch(devLogin(role));
+  // Field error state
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  const clearErrors = () => {
+    setErrors({});
+    setHasSubmitted(false);
   };
 
-  const handleCredentialsSubmit = () => {
-    if (!email || !password) {
-      Alert.alert('Sign In', 'Please enter your email and password, or use the quick development sign-in options below.');
+  const validateAllFields = (): boolean => {
+    const newErrors: Record<string, string | null> = {};
+
+    // Common fields
+    newErrors.email = validateEmail(email);
+    newErrors.password = validatePassword(password, isRegistering);
+
+    if (isRegistering) {
+      newErrors.firstName = validateName(firstName, 'First name', true);
+      newErrors.lastName = validateName(lastName, 'Last name', true);
+      newErrors.phone = validatePhone(phone, false, 'Phone number');
+
+      if (role === 'patient') {
+        newErrors.dateOfBirth = validateDateOfBirth(dateOfBirth, false);
+        newErrors.emergencyContactName = validateName(emergencyContactName, 'Emergency contact name', false);
+        newErrors.emergencyContactPhone = validatePhone(emergencyContactPhone, false, 'Emergency contact phone');
+      } else {
+        newErrors.specializationName = validateSpecialization(specializationName);
+        newErrors.licenseNumber = validateLicenseNumber(licenseNumber);
+        newErrors.experienceYears = validateExperienceYears(experienceYears);
+        newErrors.consultationFee = validateConsultationFee(consultationFee);
+        newErrors.qualification = validateQualification(qualification);
+      }
+    }
+
+    setErrors(newErrors);
+    const hasAnyError = Object.values(newErrors).some((err) => err !== null);
+    return !hasAnyError;
+  };
+
+  const handleSubmit = async () => {
+    setHasSubmitted(true);
+    const isValid = validateAllFields();
+
+    if (!isValid) {
+      Alert.alert('Validation Error', 'Please fix the highlighted errors before continuing.');
       return;
     }
-    Alert.alert(
-      'Account Sign In',
-      'Production authentication will connect to the clinical auth provider. For local testing, please use the quick sign-in buttons below.'
-    );
+
+    if (!isRegistering) {
+      dispatch(loginUser({ email: email.trim(), password }));
+      return;
+    }
+
+    let registration: RegistrationPayload;
+    if (role === 'patient') {
+      const profile: PatientRegistration = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || undefined,
+        dateOfBirth: dateOfBirth.trim() || undefined,
+        emergencyContactName: emergencyContactName.trim() || undefined,
+        emergencyContactPhone: emergencyContactPhone.trim() || undefined,
+      };
+      registration = { role, profile };
+    } else {
+      const profile: DoctorRegistration = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim() || undefined,
+        specializationName: specializationName.trim(),
+        licenseNumber: licenseNumber.trim(),
+        experienceYears: Number(experienceYears),
+        consultationFee: Number(consultationFee),
+        qualification: qualification.trim(),
+        bio: bio.trim() || undefined,
+      };
+      registration = { role, profile };
+    }
+
+    try {
+      const result = await dispatch(registerUser({ registration, credentials: { email: email.trim(), password } })).unwrap();
+      if (result.confirmationRequired) {
+        Alert.alert('Confirm Your Email', 'Check your email, confirm your address, then sign in here to finish setting up your profile.');
+        setIsRegistering(false);
+      }
+    } catch {
+      // The Redux auth error is rendered in ErrorView
+    }
   };
+
+  const handleToggleMode = () => {
+    setIsRegistering(!isRegistering);
+    clearErrors();
+  };
+
+  const handleRoleChange = (newRole: 'patient' | 'doctor') => {
+    setRole(newRole);
+    clearErrors();
+  };
+
+  const renderRoleSelector = () => (
+    <View style={styles.segmentedContainer}>
+      {(['patient', 'doctor'] as const).map((option) => (
+        <TouchableOpacity
+          key={option}
+          activeOpacity={0.85}
+          style={[
+            styles.segmentOption,
+            role === option && styles.segmentOptionActive,
+          ]}
+          onPress={() => handleRoleChange(option)}
+        >
+          <Text
+            style={[
+              styles.segmentOptionText,
+              role === option && styles.segmentOptionTextActive,
+            ]}
+          >
+            {option === 'patient' ? 'Patient' : 'Doctor'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <ScreenHeader
         title="DoctorDirect"
         subtitle="Telemedicine & Digital Clinical Care"
       />
 
-      {error && (
+      {authError && (
         <ErrorView
           title="Authentication Failed"
-          message={error}
+          message={authError}
         />
       )}
 
-      {/* Account Login Form */}
       <Card variant="default" padding="xl" style={styles.formCard}>
-        <Text style={styles.sectionHeading}>Sign In to Your Account</Text>
+        <View style={styles.headerBlock}>
+          <Text style={styles.eyebrow}>{isRegistering ? 'Create account' : 'Welcome back'}</Text>
+          <Text style={styles.sectionHeading}>{isRegistering ? 'Set up your profile' : 'Sign in to your account'}</Text>
+          <Text style={styles.subtext}>
+            {isRegistering
+              ? 'Create a secure patient or doctor profile to continue.'
+              : 'Access your care dashboard and clinical records.'}
+          </Text>
+        </View>
 
-        <Input
-          label="Email Address"
-          placeholder="name@hospital.org or patient@mail.com"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
+        {isRegistering && (
+          <View style={styles.sectionWrap}>
+            <Text style={styles.sectionTitle}>Account type</Text>
+            {renderRoleSelector()}
 
-        <Input
-          label="Password"
-          placeholder="Enter your password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+            <Text style={styles.sectionTitle}>Personal Information</Text>
+            <Input
+              label="First name *"
+              placeholder="e.g. Jane"
+              value={firstName}
+              onChangeText={(text) => {
+                setFirstName(text);
+                if (hasSubmitted) setErrors((prev) => ({ ...prev, firstName: validateName(text, 'First name', true) }));
+              }}
+              onBlur={() => setErrors((prev) => ({ ...prev, firstName: validateName(firstName, 'First name', true) }))}
+              error={errors.firstName}
+              autoCapitalize="words"
+            />
+
+            <Input
+              label="Last name *"
+              placeholder="e.g. Doe"
+              value={lastName}
+              onChangeText={(text) => {
+                setLastName(text);
+                if (hasSubmitted) setErrors((prev) => ({ ...prev, lastName: validateName(text, 'Last name', true) }));
+              }}
+              onBlur={() => setErrors((prev) => ({ ...prev, lastName: validateName(lastName, 'Last name', true) }))}
+              error={errors.lastName}
+              autoCapitalize="words"
+            />
+
+            <Input
+              label="Phone number (optional)"
+              placeholder="e.g. +1234567890 (7-15 digits)"
+              value={phone}
+              onChangeText={(text) => {
+                const clean = sanitizePhoneInput(text);
+                setPhone(clean);
+                if (hasSubmitted) setErrors((prev) => ({ ...prev, phone: validatePhone(clean, false, 'Phone number') }));
+              }}
+              onBlur={() => setErrors((prev) => ({ ...prev, phone: validatePhone(phone, false, 'Phone number') }))}
+              error={errors.phone}
+              keyboardType="phone-pad"
+            />
+
+            {role === 'patient' ? (
+              <>
+                <DatePickerInput
+                  label="Date of birth (optional)"
+                  value={dateOfBirth}
+                  onChangeDate={(d) => {
+                    setDateOfBirth(d);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, dateOfBirth: validateDateOfBirth(d, false) }));
+                  }}
+                  error={errors.dateOfBirth}
+                  hint="Select using the calendar picker (must be in past)"
+                />
+
+                <Input
+                  label="Emergency contact name (optional)"
+                  placeholder="e.g. John Doe"
+                  value={emergencyContactName}
+                  onChangeText={(text) => {
+                    setEmergencyContactName(text);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, emergencyContactName: validateName(text, 'Emergency contact name', false) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, emergencyContactName: validateName(emergencyContactName, 'Emergency contact name', false) }))}
+                  error={errors.emergencyContactName}
+                  autoCapitalize="words"
+                />
+
+                <Input
+                  label="Emergency contact phone (optional)"
+                  placeholder="e.g. +1234567890"
+                  value={emergencyContactPhone}
+                  onChangeText={(text) => {
+                    const clean = sanitizePhoneInput(text);
+                    setEmergencyContactPhone(clean);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, emergencyContactPhone: validatePhone(clean, false, 'Emergency contact phone') }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, emergencyContactPhone: validatePhone(emergencyContactPhone, false, 'Emergency contact phone') }))}
+                  error={errors.emergencyContactPhone}
+                  keyboardType="phone-pad"
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.sectionTitle}>Professional Information</Text>
+
+                <Input
+                  label="Medical specialization *"
+                  placeholder="e.g. Cardiology, Pediatrics"
+                  value={specializationName}
+                  onChangeText={(text) => {
+                    setSpecializationName(text);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, specializationName: validateSpecialization(text) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, specializationName: validateSpecialization(specializationName) }))}
+                  error={errors.specializationName}
+                  autoCapitalize="words"
+                />
+
+                <Input
+                  label="Medical license number *"
+                  placeholder="e.g. MED-84729"
+                  value={licenseNumber}
+                  onChangeText={(text) => {
+                    setLicenseNumber(text);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, licenseNumber: validateLicenseNumber(text) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, licenseNumber: validateLicenseNumber(licenseNumber) }))}
+                  error={errors.licenseNumber}
+                  autoCapitalize="characters"
+                />
+
+                <Input
+                  label="Years of experience *"
+                  placeholder="e.g. 8"
+                  value={experienceYears}
+                  onChangeText={(text) => {
+                    const clean = sanitizeDigitsOnly(text);
+                    setExperienceYears(clean);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, experienceYears: validateExperienceYears(clean) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, experienceYears: validateExperienceYears(experienceYears) }))}
+                  error={errors.experienceYears}
+                  keyboardType="number-pad"
+                />
+
+                <Input
+                  label="Consultation fee ($) *"
+                  placeholder="e.g. 75 or 120.00"
+                  value={consultationFee}
+                  onChangeText={(text) => {
+                    const clean = sanitizeDecimalInput(text);
+                    setConsultationFee(clean);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, consultationFee: validateConsultationFee(clean) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, consultationFee: validateConsultationFee(consultationFee) }))}
+                  error={errors.consultationFee}
+                  keyboardType="decimal-pad"
+                />
+
+                <Input
+                  label="Qualification *"
+                  placeholder="e.g. MBBS, MD (Internal Medicine)"
+                  value={qualification}
+                  onChangeText={(text) => {
+                    setQualification(text);
+                    if (hasSubmitted) setErrors((prev) => ({ ...prev, qualification: validateQualification(text) }));
+                  }}
+                  onBlur={() => setErrors((prev) => ({ ...prev, qualification: validateQualification(qualification) }))}
+                  error={errors.qualification}
+                />
+
+                <Input
+                  label="Professional bio (optional)"
+                  placeholder="Short background, clinical interests, or clinic introduction..."
+                  value={bio}
+                  onChangeText={setBio}
+                  multiline
+                  numberOfLines={3}
+                />
+              </>
+            )}
+          </View>
+        )}
+
+        <View style={styles.sectionWrap}>
+          <Text style={styles.sectionTitle}>Account Credentials</Text>
+          <Input
+            label="Email Address *"
+            placeholder="name@example.com"
+            value={email}
+            onChangeText={(text) => {
+              setEmail(text);
+              if (hasSubmitted) setErrors((prev) => ({ ...prev, email: validateEmail(text) }));
+            }}
+            onBlur={() => setErrors((prev) => ({ ...prev, email: validateEmail(email) }))}
+            error={errors.email}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <Input
+            label="Password *"
+            placeholder={isRegistering ? 'At least 8 characters' : 'Enter your password'}
+            value={password}
+            onChangeText={(text) => {
+              setPassword(text);
+              if (hasSubmitted) setErrors((prev) => ({ ...prev, password: validatePassword(text, isRegistering) }));
+            }}
+            onBlur={() => setErrors((prev) => ({ ...prev, password: validatePassword(password, isRegistering) }))}
+            error={errors.password}
+            secureTextEntry
+          />
+        </View>
 
         <Button
-          title="Sign In"
-          onPress={handleCredentialsSubmit}
+          title={isRegistering ? 'Create Account' : 'Sign In'}
+          onPress={handleSubmit}
           variant="primary"
           size="lg"
-          style={styles.signInButton}
+          isLoading={isLoading}
+          style={styles.primaryButton}
         />
-      </Card>
-
-      {/* Temporary Development Login Section */}
-      <Card variant="subtle" padding="lg" style={styles.devCard}>
-        <Text style={styles.devTitle}>Development Quick Access</Text>
-        <Text style={styles.devSubtitle}>
-          Sign in immediately with pre-configured development profiles:
-        </Text>
-
         <Button
-          title="Sign in as Patient (Rahul Verma)"
-          onPress={() => handleDevLogin('patient')}
+          title={isRegistering ? 'Already have an account? Sign in' : 'Need an account? Create one'}
+          onPress={handleToggleMode}
           variant="outline"
           size="md"
-          isLoading={isLoading}
-          style={styles.devButton}
-        />
-
-        <Button
-          title="Sign in as Doctor (Dr. Aditi Sharma)"
-          onPress={() => handleDevLogin('doctor')}
-          variant="outline"
-          size="md"
-          isLoading={isLoading}
-          style={styles.devButton}
+          style={styles.secondaryButton}
         />
       </Card>
     </ScrollView>
@@ -124,39 +431,78 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.xl,
+    paddingHorizontal: spacing.xl,
     paddingTop: spacing.section,
     paddingBottom: spacing.xxxl,
   },
   formCard: {
     marginBottom: spacing.xl,
   },
-  sectionHeading: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.text.primary,
+  headerBlock: {
     marginBottom: spacing.lg,
   },
-  signInButton: {
-    marginTop: spacing.sm,
+  eyebrow: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semiBold,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
   },
-  devCard: {
-    borderWidth: 1,
-    borderColor: colors.border,
+  sectionHeading: {
+    fontSize: typography.sizes.xxl,
+    fontWeight: typography.weights.bold,
+    color: colors.text.primary,
+    lineHeight: typography.lineHeights.loose,
   },
-  devTitle: {
+  subtext: {
+    fontSize: typography.sizes.md,
+    color: colors.text.secondary,
+    lineHeight: typography.lineHeights.relaxed,
+    marginTop: spacing.xs,
+  },
+  sectionWrap: {
+    marginBottom: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  sectionTitle: {
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
-    marginBottom: 2,
-  },
-  devSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.text.secondary,
     marginBottom: spacing.md,
-    lineHeight: typography.lineHeights.normal,
   },
-  devButton: {
-    marginVertical: spacing.xs,
+  segmentedContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: spacing.borderRadius.xl,
+    padding: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  segmentOption: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    borderRadius: spacing.borderRadius.lg,
+  },
+  segmentOptionActive: {
+    backgroundColor: colors.surface,
+    ...spacing.shadows.sm,
+  },
+  segmentOptionText: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.semiBold,
+    color: colors.text.secondary,
+  },
+  segmentOptionTextActive: {
+    color: colors.primary,
+  },
+  primaryButton: {
+    marginTop: spacing.sm,
+  },
+  secondaryButton: {
+    marginTop: spacing.sm,
   },
 });
