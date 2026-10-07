@@ -10,6 +10,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PatientDoctorStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
@@ -35,9 +36,16 @@ type Props = NativeStackScreenProps<PatientDoctorStackParamList, 'DoctorDetail'>
 
 function getNextTwoWeeks(): { fromDate: string; toDate: string } {
   const today = new Date();
-  const from = today.toISOString().split('T')[0];
-  const to = new Date(today.getTime() + 13 * 86400000).toISOString().split('T')[0];
+  const from = localDateKey(today);
+  const to = localDateKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 13));
   return { fromDate: from, toDate: to };
+}
+
+function localDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export default function DoctorDetailScreen({ route, navigation }: Props) {
@@ -59,12 +67,12 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
     dispatch(loadDoctorSlots({ doctorId, fromDate, toDate }));
   }, [dispatch, doctorId]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     load();
     return () => {
       dispatch(clearSelectedDoctor());
     };
-  }, [load, dispatch]);
+  }, [load, dispatch]));
 
   // Show actionError in alert when it appears
   useEffect(() => {
@@ -93,10 +101,15 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
       const { fromDate, toDate } = getNextTwoWeeks();
       dispatch(loadDoctorSlots({ doctorId, fromDate, toDate }));
       showAlert(
-        '✅ Appointment Booked!',
-        `Your appointment with ${selectedDoctor?.fullName} is confirmed.\n\nYou can view it in the Appointments tab.`,
+        'Appointment requested',
+        `Your booking request with ${selectedDoctor?.fullName} was sent. You can check its status in the Appointments tab.`,
         [{ text: 'Great!' }]
       );
+    } else {
+      setBookingModalVisible(false);
+      setSelectedSlot(null);
+      const { fromDate, toDate } = getNextTwoWeeks();
+      dispatch(loadDoctorSlots({ doctorId, fromDate, toDate }));
     }
   };
 
@@ -201,6 +214,8 @@ export default function DoctorDetailScreen({ route, navigation }: Props) {
 
         {isLoadingSlots ? (
           <LoadingIndicator message="Loading slots…" />
+        ) : error ? (
+          <ErrorView message={error} onRetry={load} />
         ) : sortedDates.length === 0 ? (
           <Card variant="default" padding="lg" style={styles.emptySlots}>
             <AppIcon name="calendar" size={32} color={colors.text.muted} />

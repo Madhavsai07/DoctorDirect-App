@@ -484,6 +484,12 @@ export class AppointmentRepository {
           eventKey: `appointment-confirmed-patient:${current.id}`,
         }, client);
       } else if (params.newStatus === 'cancelled') {
+        await client.query(
+          `UPDATE consultations
+           SET status = 'cancelled', ended_at = COALESCE(ended_at, NOW()), updated_at = NOW()
+           WHERE appointment_id = $1 AND status IN ('scheduled', 'waiting', 'in_progress')`,
+          [current.id]
+        );
         const patientCancelled = params.actorRole === 'patient';
         await notificationService.createOnce({
           recipientUserId: patientCancelled ? current.doctor_user_id : current.patient_user_id,

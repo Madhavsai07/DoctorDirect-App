@@ -21,6 +21,7 @@ import { AdminStackParamList } from '../../navigation/types';
 import { adminService, VerificationStatus } from '../../services/admin/adminService';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Card,
   Badge,
@@ -69,7 +70,7 @@ export default function AdminDoctorDetailScreen() {
       })
       .catch((error: unknown) => {
         if (isCurrent) {
-          setIdCardError(error instanceof Error ? error.message : 'Unable to load the uploaded ID card.');
+          setIdCardError(getApiErrorMessage(error, 'Unable to load the uploaded ID card.'));
         }
       })
       .finally(() => {
@@ -284,7 +285,7 @@ export default function AdminDoctorDetailScreen() {
             <View style={styles.gridCol}>
               <Text style={styles.infoFieldLabel}>Highest Qualification</Text>
               <Text style={styles.credentialHighlight}>
-                {doctor.qualification || 'MBBS / Registered Practitioner'}
+                {doctor.qualification || 'Not provided'}
               </Text>
             </View>
 

@@ -10,18 +10,22 @@ import {
 } from '../../types/auth';
 import { requireSupabase } from './supabaseClient';
 import { appStorage } from './storageAdapter';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 const pendingRegistrationKey = (userId: string) => `pending-profile-${userId}`;
-const DEV_TOKEN_KEY = 'app_dev_token';
 
 function formatError(error: unknown): string {
 	const message = error instanceof Error ? error.message.toLowerCase() : '';
 	const response = (error as { response?: { data?: { error?: string; code?: string } } })?.response;
 	const apiMessage = response?.data?.error?.toLowerCase() ?? '';
 
+	if (message.includes('session is no longer valid')) return 'Your session expired. Please sign in again.';
+	if (message.includes('already registered') || message.includes('user already exists') ||
+		apiMessage.includes('already exists') || apiMessage.includes('already registered')) {
+		return 'An account with this email already exists. Please sign in instead.';
+	}
 	if (response?.data?.code === 'PROFILE_REQUIRED') return 'Your application profile is incomplete. Finish registration to continue.';
 	if (message.includes('invalid login credentials') || message.includes('invalid email or password')) return 'Email or password is incorrect.';
-	if (message.includes('already registered') || message.includes('user already exists')) return 'An account with this email already exists.';
 	if (message.includes('password') && (message.includes('weak') || message.includes('short') || message.includes('characters'))) return 'Choose a stronger password with at least 8 characters.';
 	if (message.includes('email') && (message.includes('invalid') || message.includes('valid'))) return 'Enter a valid email address.';
 	if (message.includes('fetch') || message.includes('network') || message.includes('timeout')) return 'Unable to connect. Check your internet connection and try again.';
@@ -32,7 +36,8 @@ function formatError(error: unknown): string {
 		return error instanceof Error ? error.message : 'Unable to upload the ID card.';
 	}
 	if (message.includes('supabase is not configured')) return 'Authentication is not configured on this app. Contact support.';
-	return 'Authentication failed. Please try again.';
+	if (message.includes('sign out before creating another account')) return 'Sign out before creating another account.';
+	return getApiErrorMessage(error, 'Authentication failed. Please try again.');
 }
 
 function identityFromUser(user: User): AuthIdentity {
@@ -109,11 +114,21 @@ async function provisionPendingProfile(userId: string): Promise<void> {
 }
 
 async function fetchApplicationUser(user: User): Promise<AuthBundle> {
-	await provisionPendingProfile(user.id);
-	const response = await apiClient.get('/auth/me');
-	const rawUser = response.data.user as Record<string, unknown>;
-	const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
-	return { identity: identityFromUser(user), user: mapApplicationUser(rawUser, profile) };
+	try {
+		await provisionPendingProfile(user.id);
+		const response = await apiClient.get('/auth/me');
+		const rawUser = response.data.user as Record<string, unknown>;
+		const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
+		return { identity: identityFromUser(user), user: mapApplicationUser(rawUser, profile) };
+	} catch (error) {
+		const response = (error as { response?: { status?: number; data?: { code?: string } } })?.response;
+		if (response?.status === 401 || (response?.status === 403 && response.data?.code !== 'PROFILE_REQUIRED')) {
+			const { error: signOutError } = await requireSupabase().auth.signOut({ scope: 'local' });
+			if (signOutError) throw signOutError;
+			throw new Error('Your session is no longer valid. Please sign in again.');
+		}
+		throw error;
+	}
 }
 
 async function savePendingProfile(userId: string, registration: RegistrationPayload): Promise<void> {
@@ -126,68 +141,34 @@ async function activateSession(session: Session): Promise<AuthBundle> {
 
 export const authService = {
 	async getAccessToken(): Promise<string | null> {
-		try {
-			const { data } = await requireSupabase().auth.getSession();
-			if (data.session?.access_token) return data.session.access_token;
-		} catch {
-			// Ignore Supabase errors, fall through to dev token
-		}
-		return (await appStorage.getItem(DEV_TOKEN_KEY)) ?? null;
+		const { data, error } = await requireSupabase().auth.getSession();
+		if (error) throw error;
+		return data.session?.access_token ?? null;
 	},
 
 	async restoreSession(): Promise<AuthBundle | null> {
+		const { data, error } = await requireSupabase().auth.getSession();
+		if (error) throw error;
+		if (!data.session) return null;
 		try {
-			const { data, error } = await requireSupabase().auth.getSession();
-			if (!error && data.session) {
-				return await activateSession(data.session);
-			}
-		} catch {
-			// Fall through to dev token check
+			return await activateSession(data.session);
+		} catch (activationError) {
+			const { data: refreshedSession, error: sessionError } = await requireSupabase().auth.getSession();
+			if (sessionError) throw sessionError;
+			if (!refreshedSession.session) return null;
+			throw activationError;
 		}
-
-		const devToken = await appStorage.getItem(DEV_TOKEN_KEY);
-		if (devToken) {
-			try {
-				const response = await apiClient.get('/auth/me');
-				const rawUser = response.data.user as Record<string, unknown>;
-				const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
-				const user = mapApplicationUser(rawUser, profile);
-				return { identity: { id: String(rawUser.auth_user_id ?? rawUser.id), email: user.email }, user };
-			} catch {
-				await appStorage.deleteItem(DEV_TOKEN_KEY);
-			}
-		}
-		return null;
 	},
 
 	async signIn(credentials: LoginCredentials): Promise<AuthBundle> {
 		const email = credentials.email.trim();
-		try {
-			const { data, error } = await requireSupabase().auth.signInWithPassword({
-				email,
-				password: credentials.password,
-			});
-			if (!error && data.session) {
-				await appStorage.deleteItem(DEV_TOKEN_KEY);
-				return await activateSession(data.session);
-			}
-		} catch {
-			// Fall through to local auth check
-		}
-
-		// Local / Seed auth fallback
-		const devToken = `dev-token-${email}`;
-		await appStorage.setItem(DEV_TOKEN_KEY, devToken);
-		try {
-			const response = await apiClient.get('/auth/me');
-			const rawUser = response.data.user as Record<string, unknown>;
-			const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
-			const user = mapApplicationUser(rawUser, profile);
-			return { identity: { id: String(rawUser.auth_user_id ?? rawUser.id), email: user.email }, user };
-		} catch (err) {
-			await appStorage.deleteItem(DEV_TOKEN_KEY);
-			throw new Error(formatError(err instanceof Error ? err : new Error('Invalid email or password')));
-		}
+		const { data, error } = await requireSupabase().auth.signInWithPassword({
+			email,
+			password: credentials.password,
+		});
+		if (error) throw error;
+		if (!data.session) throw new Error('Sign-in did not create an authenticated session.');
+		return activateSession(data.session);
 	},
 
 	async signUp(registration: RegistrationPayload, credentials: LoginCredentials): Promise<{ bundle: AuthBundle | null; confirmationRequired: boolean }> {
@@ -195,49 +176,26 @@ export const authService = {
 		if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
 		if (credentials.password.length < 8) throw new Error('Choose a stronger password with at least 8 characters.');
 
-		// Attempt Supabase sign-up if configured
-		try {
-			const client = requireSupabase();
-			const current = await client.auth.getSession();
-			if (current.data.session?.user.email?.toLowerCase() === email.toLowerCase()) {
-				await savePendingProfile(current.data.session.user.id, registration);
-				const bundle = await activateSession(current.data.session);
-				return { bundle, confirmationRequired: false };
+		const client = requireSupabase();
+		const current = await client.auth.getSession();
+		if (current.error) throw current.error;
+		if (current.data.session) {
+			if (current.data.session.user.email?.toLowerCase() !== email.toLowerCase()) {
+				throw new Error('Sign out before creating another account.');
 			}
-
-			const { data, error } = await client.auth.signUp({ email, password: credentials.password });
-			if (error || !data.user) throw new Error(formatError(error ?? new Error('Registration failed')));
-			await savePendingProfile(data.user.id, registration);
-			if (!data.session) return { bundle: null, confirmationRequired: true };
-
-			const bundle = await activateSession(data.session);
+			await savePendingProfile(current.data.session.user.id, registration);
+			const bundle = await activateSession(current.data.session);
 			return { bundle, confirmationRequired: false };
-		} catch (err: unknown) {
-			// If Supabase is not configured, fall back to dev-token registration
-			const msg = err instanceof Error ? err.message : '';
-			if (!msg.toLowerCase().includes('supabase')) throw err;
 		}
 
-		// Dev-mode fallback: store a dev token and provision the profile via the local backend
-		if (registration.role === 'doctor') {
-			throw new Error('Doctor ID card upload requires an authenticated Supabase session and configured Storage.');
-		}
-		const devToken = `dev-token-${email}`;
-		await appStorage.setItem(DEV_TOKEN_KEY, devToken);
-		try {
-			await apiClient.post('/auth/register/patient', registration.profile);
-			const response = await apiClient.get('/auth/me');
-			const rawUser = response.data.user as Record<string, unknown>;
-			const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
-			const user = mapApplicationUser(rawUser, profile);
-			return {
-				bundle: { identity: { id: String(rawUser.auth_user_id ?? rawUser.id), email: user.email }, user },
-				confirmationRequired: false,
-			};
-		} catch (err) {
-			await appStorage.deleteItem(DEV_TOKEN_KEY);
-			throw new Error(formatError(err instanceof Error ? err : new Error('Registration failed')));
-		}
+		const { data, error } = await client.auth.signUp({ email, password: credentials.password });
+		if (error) throw error;
+		if (!data.user) throw new Error('Registration did not create an account.');
+		await savePendingProfile(data.user.id, registration);
+		if (!data.session) return { bundle: null, confirmationRequired: true };
+
+		const bundle = await activateSession(data.session);
+		return { bundle, confirmationRequired: false };
 	},
 
 	async logout(): Promise<void> {
@@ -250,7 +208,6 @@ export const authService = {
 		} catch {
 			// Ignore Supabase signout error
 		}
-		await appStorage.deleteItem(DEV_TOKEN_KEY);
 	},
 
 	mapError: formatError,

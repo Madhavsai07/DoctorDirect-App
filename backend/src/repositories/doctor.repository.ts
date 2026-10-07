@@ -1,5 +1,6 @@
 import { pool } from '../db/pool';
 import { PoolClient } from 'pg';
+import { notificationService } from '../services/notification.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types matching the Milestone 2 PostgreSQL schema
@@ -27,6 +28,7 @@ export interface DbDoctorListing {
   verified_at: Date | null;
   verified_by: string | null;
   user_created_at: Date | null;
+  is_active: boolean;
 }
 
 export interface DbSpecialization {
@@ -73,6 +75,43 @@ export interface ScheduleWindowDto {
   start_time: string;
   end_time: string;
   slot_duration_minutes: number;
+}
+
+interface AppointmentForScheduleBlock {
+  id: string;
+  patient_user_id: string;
+  slot_id: string;
+  slot_date: string;
+  slot_start_time: string;
+}
+
+async function cancelAppointmentsForScheduleBlock(
+  client: PoolClient,
+  appointments: AppointmentForScheduleBlock[],
+  blockedSlotStatus: 'cancelled' | 'blocked' = 'cancelled'
+): Promise<void> {
+  for (const appointment of appointments) {
+    await client.query(
+      `UPDATE appointments
+       SET status = 'cancelled',
+           cancellation_reason = 'Doctor blocked the appointment slot',
+           updated_at = NOW()
+       WHERE id = $1`,
+      [appointment.id]
+    );
+    await client.query(
+      `UPDATE slots SET status = $1, updated_at = NOW() WHERE id = $2`,
+      [blockedSlotStatus, appointment.slot_id]
+    );
+    await notificationService.createOnce({
+      recipientUserId: appointment.patient_user_id,
+      type: 'appointment_cancelled',
+      title: 'Appointment cancelled — please rebook',
+      message: `Your appointment on ${appointment.slot_date} at ${appointment.slot_start_time.slice(0, 5)} was cancelled because the doctor blocked this time. Please book another available slot.`,
+      appointmentId: appointment.id,
+      eventKey: `doctor-blocked-appointment:${appointment.id}`,
+    }, client);
+  }
 }
 
 export interface UpsertAvailabilityDto {
@@ -143,6 +182,7 @@ export class DoctorRepository {
         u.last_name,
         u.avatar_url,
         u.created_at    AS user_created_at,
+        u.is_active,
         d.specialization_id,
         s.name          AS specialization_name,
         d.license_number,
@@ -182,6 +222,7 @@ export class DoctorRepository {
         u.last_name,
         u.avatar_url,
         u.created_at    AS user_created_at,
+        u.is_active,
         d.specialization_id,
         s.name          AS specialization_name,
         d.license_number,
@@ -219,6 +260,7 @@ export class DoctorRepository {
         u.last_name,
         u.avatar_url,
         u.created_at    AS user_created_at,
+        u.is_active,
         d.specialization_id,
         s.name          AS specialization_name,
         d.license_number,
@@ -312,12 +354,48 @@ export class DoctorRepository {
     doctorId: string,
     date: string,
     isBlocked: boolean,
-    windows: ScheduleWindowDto[]
+    windows: ScheduleWindowDto[],
+    expectedBookedCount?: number
   ): Promise<void> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await lockDoctorSchedule(client, doctorId);
+      let appointmentsToCancel: AppointmentForScheduleBlock[] = [];
+      if (isBlocked) {
+        const inProgress = await client.query(
+          `SELECT 1 FROM appointments a
+           JOIN slots s ON s.id = a.slot_id
+           WHERE a.doctor_id = $1 AND s.date = $2::date AND a.status = 'in_progress'
+           LIMIT 1`,
+          [doctorId, date]
+        );
+        if (inProgress.rowCount) {
+          throw Object.assign(new Error('This date has an appointment in progress and cannot be blocked.'), {
+            status: 409,
+          });
+        }
+        const booked = await client.query<AppointmentForScheduleBlock>(
+          `SELECT a.id, p.user_id AS patient_user_id, s.id AS slot_id,
+                  s.date::text AS slot_date, s.start_time::text AS slot_start_time
+           FROM appointments a
+           JOIN slots s ON s.id = a.slot_id
+           JOIN patients p ON p.id = a.patient_id
+           WHERE a.doctor_id = $1 AND s.date = $2::date
+             AND a.status IN ('booked', 'confirmed')
+             AND (s.date > CURRENT_DATE OR (s.date = CURRENT_DATE AND s.start_time > CURRENT_TIME))
+           ORDER BY s.start_time
+           FOR UPDATE OF a, s`,
+          [doctorId, date]
+        );
+        appointmentsToCancel = booked.rows;
+        if (expectedBookedCount !== undefined && appointmentsToCancel.length !== expectedBookedCount) {
+          throw Object.assign(
+            new Error('Bookings changed since you reviewed this date. Refresh the schedule and confirm the block again.'),
+            { status: 409 }
+          );
+        }
+      }
       const saved = await client.query<{ id: string }>(
         `INSERT INTO schedule_date_overrides (doctor_id, override_date, is_blocked)
          VALUES ($1, $2::date, $3)
@@ -337,6 +415,9 @@ export class DoctorRepository {
             [overrideId, window.start_time, window.end_time, window.slot_duration_minutes]
           );
         }
+      }
+      if (isBlocked) {
+        await cancelAppointmentsForScheduleBlock(client, appointmentsToCancel);
       }
       await client.query('COMMIT');
     } catch (error) {
@@ -703,7 +784,8 @@ export class DoctorRepository {
     slotId: string,
     action: 'edit' | 'block' | 'restore',
     startTime?: string,
-    endTime?: string
+    endTime?: string,
+    expectedBookedCount?: number
   ): Promise<DbSlot | null> {
     const client = await pool.connect();
     try {
@@ -719,28 +801,63 @@ export class DoctorRepository {
         await client.query('ROLLBACK');
         return null;
       }
-      const activeAppointment = await client.query(
-        `SELECT 1 FROM appointments
-         WHERE slot_id = $1 AND status NOT IN ('cancelled', 'rescheduled')
-         LIMIT 1`,
-        [slotId]
-      );
-      if (activeAppointment.rowCount) {
-        throw Object.assign(new Error('Booked slots cannot be changed.'), { status: 409 });
-      }
       if (action === 'restore') {
+        const activeAppointment = await client.query(
+          `SELECT 1 FROM appointments
+           WHERE slot_id = $1 AND status NOT IN ('cancelled', 'rescheduled')
+           LIMIT 1`,
+          [slotId]
+        );
+        if (activeAppointment.rowCount) {
+          throw Object.assign(new Error('Booked slots cannot be changed.'), { status: 409 });
+        }
         await client.query(
           `UPDATE slots SET status = 'available', is_manual_override = TRUE, updated_at = NOW()
            WHERE id = $1`,
           [slotId]
         );
       } else if (action === 'block') {
+        const inProgress = await client.query(
+          `SELECT 1 FROM appointments WHERE slot_id = $1 AND status = 'in_progress' LIMIT 1`,
+          [slotId]
+        );
+        if (inProgress.rowCount) {
+          throw Object.assign(new Error('An appointment in progress cannot be blocked.'), { status: 409 });
+        }
+        const booked = await client.query<AppointmentForScheduleBlock>(
+          `SELECT a.id, p.user_id AS patient_user_id, s.id AS slot_id,
+                  s.date::text AS slot_date, s.start_time::text AS slot_start_time
+           FROM appointments a
+           JOIN slots s ON s.id = a.slot_id
+           JOIN patients p ON p.id = a.patient_id
+           WHERE a.doctor_id = $1 AND s.id = $2
+             AND a.status IN ('booked', 'confirmed')
+             AND (s.date > CURRENT_DATE OR (s.date = CURRENT_DATE AND s.start_time > CURRENT_TIME))
+           FOR UPDATE OF a, s`,
+          [doctorId, slotId]
+        );
+        if (expectedBookedCount !== undefined && booked.rows.length !== expectedBookedCount) {
+          throw Object.assign(
+            new Error('Bookings changed since you reviewed this slot. Refresh the schedule and confirm the block again.'),
+            { status: 409 }
+          );
+        }
+        await cancelAppointmentsForScheduleBlock(client, booked.rows, 'blocked');
         await client.query(
           `UPDATE slots SET status = 'blocked', is_manual_override = TRUE, updated_at = NOW()
            WHERE id = $1`,
           [slotId]
         );
       } else {
+        const activeAppointment = await client.query(
+          `SELECT 1 FROM appointments
+           WHERE slot_id = $1 AND status NOT IN ('cancelled', 'rescheduled')
+           LIMIT 1`,
+          [slotId]
+        );
+        if (activeAppointment.rowCount) {
+          throw Object.assign(new Error('Booked slots cannot be changed.'), { status: 409 });
+        }
         const appointmentHistory = await client.query(
           'SELECT 1 FROM appointments WHERE slot_id = $1 LIMIT 1',
           [slotId]

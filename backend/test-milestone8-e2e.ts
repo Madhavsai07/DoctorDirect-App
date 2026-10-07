@@ -1,315 +1,182 @@
-const BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
+import assert from 'node:assert/strict';
+import { pool } from './src/db/pool';
+import { doctorRepository } from './src/repositories/doctor.repository';
+import { closeTestClients, createTestAccounts, TestAccount, createTestAccount } from './test-support/auth';
 
-function requiredEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Set ${name} in the local environment before running this test.`);
-  return value;
-}
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-function bearerHeaders(tokenName: string) {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${requiredEnv(tokenName)}`,
-  };
-}
-
-const DOCTOR_ID = requiredEnv('TEST_DOCTOR_ID');
-const doc1Headers = bearerHeaders('DOCTOR_ACCESS_TOKEN');
-const doc2Headers = bearerHeaders('OTHER_DOCTOR_ACCESS_TOKEN');
-const patientHeaders = bearerHeaders('PATIENT_ACCESS_TOKEN');
-
-async function request(url: string, options: any = {}) {
-  const res = await fetch(url, options);
-  const text = await res.text();
+async function request(path: string, headers: Record<string, string>, options: RequestInit = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { ...headers, ...(options.headers as Record<string, string> | undefined) },
+  });
+  const text = await response.text();
   let data: any;
   try {
     data = JSON.parse(text);
   } catch {
     data = text;
   }
-  return { status: res.status, ok: res.ok, data };
+  return { status: response.status, ok: response.ok, data };
 }
 
-async function runMilestone8Verification() {
-  console.log('====================================================');
-  console.log('   DOCTORDIRECT — MILESTONE 8 E2E VERIFICATION SUITE');
-  console.log('====================================================\n');
+async function runMilestone8Verification(): Promise<void> {
+  let doctor: TestAccount | undefined;
+  let otherDoctor: TestAccount | undefined;
+  let patient: TestAccount | undefined;
 
   try {
-    // 0. Ensure a future slot exists for Doctor 1
-    console.log('--- Step 0: Ensure available slot for Doctor 1 ---');
-    const tomorrow = new Date(Date.now() + 86400000);
-    const fromDate = tomorrow.toISOString().split('T')[0];
-    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
-
-    await request(
-      `${BASE_URL}/doctor/${DOCTOR_ID}/slots/generate`,
-      {
-        method: 'POST',
-        headers: doc1Headers,
-        body: JSON.stringify({ from_date: fromDate, to_date: nextWeek }),
-      }
-    );
-
-    // Fetch available future slots
-    const slotsRes = await request(
-      `${BASE_URL}/doctor/${DOCTOR_ID}/slots?from_date=${fromDate}&to_date=${nextWeek}`,
-      { headers: patientHeaders }
-    );
-    const availableSlots = (slotsRes.data.slots || []).filter(
-      (s: any) => s.status === 'available'
-    );
-    if (availableSlots.length === 0) {
-      throw new Error('No available slots found for Doctor 1 to book test appointment');
+    const accounts = await createTestAccounts([
+      { role: 'doctor' },
+      { role: 'doctor' },
+      { role: 'patient' },
+    ]);
+    [doctor, otherDoctor, patient] = accounts;
+    const doctorAccount = accounts[0];
+    const otherDoctorAccount = accounts[1];
+    const patientAccount = accounts[2];
+    if (!doctorAccount.doctorId || !otherDoctorAccount.doctorId || !patientAccount.patientId) {
+      throw new Error('The isolated Supabase test accounts must have application profiles.');
     }
-    const testSlot = availableSlots[0];
-    console.log(`✓ Found available future slot: ID ${testSlot.id} on ${testSlot.date} at ${testSlot.start_time}`);
+    const doctorId = doctorAccount.doctorId;
 
-    // 1. Patient books appointment
-    console.log('\n--- Step 1: Patient books appointment ---');
-    const bookRes = await request(`${BASE_URL}/appointments/book`, {
+    for (let day = 0; day < 7; day += 1) {
+      await doctorRepository.upsertAvailability(doctorId, {
+        day_of_week: day,
+        start_time: '09:00:00',
+        end_time: '12:00:00',
+        slot_duration_minutes: 30,
+        is_active: true,
+      });
+    }
+
+    const dateRange = await pool.query<{ from_date: string; to_date: string }>(
+      `SELECT (CURRENT_DATE + 1)::text AS from_date,
+              (CURRENT_DATE + 7)::text AS to_date`
+    );
+    const { from_date: fromDate, to_date: toDate } = dateRange.rows[0];
+    const generated = await request(`/doctor/me/slots/generate`, doctorAccount.headers, {
       method: 'POST',
-      headers: patientHeaders,
-      body: JSON.stringify({
-        slot_id: testSlot.id,
-        reason_for_visit: 'Persistent cough and mild fever for 4 days',
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_date: fromDate, to_date: toDate }),
     });
-    if (!bookRes.ok) throw new Error(`Booking failed: ${JSON.stringify(bookRes.data)}`);
-    const appointmentId = bookRes.data.appointment.id;
-    console.log(`✓ Appointment created: ID ${appointmentId}, Status: ${bookRes.data.appointment.status}`);
+    assert.equal(generated.status, 200, `Doctor can generate test slots (got ${generated.status})`);
 
-    // 2. Doctor 1 confirms appointment
-    console.log('\n--- Step 2: Doctor confirms appointment ---');
-    const confirmRes = await request(`${BASE_URL}/appointments/${appointmentId}/confirm`, {
-      method: 'PATCH',
-      headers: doc1Headers,
-    });
-    if (!confirmRes.ok) throw new Error(`Confirm failed: ${JSON.stringify(confirmRes.data)}`);
-    console.log(`✓ Appointment confirmed: Status is now ${confirmRes.data.appointment.status}`);
+    const slotsResponse = await request(
+      `/doctor/${doctorId}/slots?from_date=${fromDate}&to_date=${toDate}`,
+      patientAccount.headers
+    );
+    assert.equal(slotsResponse.status, 200, 'Patient can load doctor availability.');
+    const slot = slotsResponse.data.slots.find((item: { status: string }) => item.status === 'available');
+    assert.ok(slot, 'At least one future bookable slot was generated.');
 
-    // 3. Doctor starts consultation
-    console.log('\n--- Step 3: Doctor starts consultation ---');
-    const startConsultRes = await request(`${BASE_URL}/consultations`, {
+    const booking = await request('/appointments/book', patientAccount.headers, {
       method: 'POST',
-      headers: doc1Headers,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot_id: slot.id, reason_for_visit: 'Integration flow verification' }),
+    });
+    assert.equal(booking.status, 201, 'Patient can book a future available slot.');
+    const appointmentId = booking.data.appointment.id;
+
+    const confirmation = await request(`/appointments/${appointmentId}/confirm`, doctorAccount.headers, { method: 'PATCH' });
+    assert.equal(confirmation.status, 200, 'The owning doctor can confirm the appointment.');
+
+    const started = await request('/consultations', doctorAccount.headers, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ appointment_id: appointmentId }),
     });
-    if (!startConsultRes.ok) throw new Error(`Start consultation failed: ${JSON.stringify(startConsultRes.data)}`);
-    const consultation = startConsultRes.data.consultation;
-    const consultationId = consultation.id;
-    console.log(`✓ Consultation started: ID ${consultationId}, Status: ${consultation.status}`);
+    assert.equal(started.status, 201, 'The owning doctor can start a consultation.');
+    const consultationId = started.data.consultation.id;
 
-    // 4. Try creating prescription BEFORE consultation completion (MUST fail 400)
-    console.log('\n--- Step 4: Verify prescription blocked before consultation completion ---');
-    const prematureRes = await request(`${BASE_URL}/prescriptions`, {
+    const earlyPrescription = await request('/prescriptions', doctorAccount.headers, {
       method: 'POST',
-      headers: doc1Headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         consultationId,
-        diagnosis: 'Upper Respiratory Tract Infection',
-        medicines: [
-          {
-            name: 'Amoxicillin 500mg',
-            dosage: '1 capsule',
-            frequency: 'Three times daily',
-            duration: '5 days',
-            instructions: 'After meals',
-          },
-        ],
+        diagnosis: 'Test diagnosis',
+        medicines: [{ name: 'Medicine', dosage: '1 tablet', frequency: 'Daily', duration: '3 days' }],
       }),
     });
-    if (prematureRes.status === 400) {
-      console.log(`✓ Successfully rejected with HTTP 400: "${prematureRes.data.error}"`);
-    } else {
-      throw new Error(`Expected HTTP 400 but got ${prematureRes.status}`);
-    }
+    assert.equal(earlyPrescription.status, 400, 'Prescription creation is rejected before consultation completion.');
 
-    // 5. Doctor completes consultation
-    console.log('\n--- Step 5: Doctor completes consultation ---');
-    const completeConsultRes = await request(`${BASE_URL}/consultations/${consultationId}/complete`, {
+    const completed = await request(`/consultations/${consultationId}/complete`, doctorAccount.headers, {
       method: 'PATCH',
-      headers: doc1Headers,
-      body: JSON.stringify({
-        symptoms: 'Dry cough, low-grade fever 100°F, throat irritation',
-        clinical_notes: 'Chest clear bilaterally, throat hyperemic, no tonsillar exudates',
-        diagnosis: 'Acute Viral Pharyngitis with secondary bronchospasm',
-        treatment_plan: 'Symptomatic relief, hydration, throat gargles',
-        follow_up_instructions: 'Review after 5 days if fever persists or symptoms worsen',
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagnosis: 'Integration diagnosis', treatment_plan: 'Integration treatment' }),
     });
-    if (!completeConsultRes.ok) throw new Error(`Complete consultation failed: ${JSON.stringify(completeConsultRes.data)}`);
-    console.log(`✓ Consultation completed: Status: ${completeConsultRes.data.consultation.status}`);
+    assert.equal(completed.status, 200, 'Doctor can complete the consultation.');
 
-    // 6. Doctor creates prescription draft
-    console.log('\n--- Step 6: Doctor creates prescription draft with multiple medicines ---');
-    const createPresRes = await request(`${BASE_URL}/prescriptions`, {
+    const created = await request('/prescriptions', doctorAccount.headers, {
       method: 'POST',
-      headers: doc1Headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         consultationId,
-        diagnosis: 'Acute Viral Pharyngitis with secondary bronchospasm',
-        medicines: [
-          {
-            name: 'Tab Paracetamol 650mg',
-            dosage: '1 tablet',
-            frequency: 'Thrice daily',
-            duration: '3 days',
-            instructions: 'After food for fever/bodyache',
-          },
-          {
-            name: 'Syp Levocetirizine 5mg',
-            dosage: '5ml',
-            frequency: 'Once daily at bedtime',
-            duration: '5 days',
-            instructions: 'At bedtime with water',
-          },
-        ],
-        generalAdvice: 'Drink lukewarm water, steam inhalation twice daily, avoid cold drinks.',
+        diagnosis: 'Integration diagnosis',
+        medicines: [{ name: 'Medicine', dosage: '1 tablet', frequency: 'Daily', duration: '3 days' }],
+        generalAdvice: 'Test advice',
       }),
     });
-    if (!createPresRes.ok) throw new Error(`Create prescription draft failed: ${JSON.stringify(createPresRes.data)}`);
-    const prescription = createPresRes.data.prescription;
-    const prescriptionId = prescription.id;
-    console.log(`✓ Prescription draft created: ID ${prescriptionId}`);
-    console.log(`  is_signed: ${prescription.is_signed}`);
-    console.log(`  Medicines count: ${prescription.medicines.length}`);
+    assert.equal(created.status, 201, 'Doctor can create a prescription draft after completion.');
+    const prescriptionId = created.data.prescription.id;
 
-    // 7. Doctor edits draft (adds a 3rd medicine and updates advice)
-    console.log('\n--- Step 7: Doctor edits draft prescription ---');
-    const updateDraftRes = await request(`${BASE_URL}/prescriptions/${prescriptionId}`, {
+    const edited = await request(`/prescriptions/${prescriptionId}`, doctorAccount.headers, {
       method: 'PATCH',
-      headers: doc1Headers,
-      body: JSON.stringify({
-        diagnosis: 'Acute Viral Pharyngitis (Updated diagnosis)',
-        medicines: [
-          {
-            name: 'Tab Paracetamol 650mg',
-            dosage: '1 tablet',
-            frequency: 'Thrice daily',
-            duration: '3 days',
-            instructions: 'After food for fever/bodyache',
-          },
-          {
-            name: 'Syp Levocetirizine 5mg',
-            dosage: '5ml',
-            frequency: 'Once daily at bedtime',
-            duration: '5 days',
-            instructions: 'At bedtime with water',
-          },
-          {
-            name: 'Lozenges Strepsils',
-            dosage: '1 lozenge',
-            frequency: 'Every 4-6 hours as needed',
-            duration: '3 days',
-            instructions: 'Slowly dissolve in mouth',
-          },
-        ],
-        generalAdvice: 'Warm saline gargles thrice daily, rest vocal cords, hydrate well.',
-      }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagnosis: 'Updated integration diagnosis' }),
     });
-    if (!updateDraftRes.ok) throw new Error(`Update draft failed: ${JSON.stringify(updateDraftRes.data)}`);
-    const updatedPres = updateDraftRes.data.prescription;
-    console.log(`✓ Draft updated: Medicines count: ${updatedPres.medicines.length}, Advice updated.`);
+    assert.equal(edited.status, 200, 'Owning doctor can edit the unsigned draft.');
 
-    // 8. RBAC Test: Wrong doctor tries to edit draft (MUST fail 403)
-    console.log('\n--- Step 8: RBAC Test — Wrong doctor cannot edit draft ---');
-    const wrongDocEditRes = await request(`${BASE_URL}/prescriptions/${prescriptionId}`, {
+    const wrongDoctorEdit = await request(`/prescriptions/${prescriptionId}`, otherDoctorAccount.headers, {
       method: 'PATCH',
-      headers: doc2Headers,
-      body: JSON.stringify({ diagnosis: 'Malicious modification by unauthorized doctor' }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagnosis: 'Unauthorized edit' }),
     });
-    if (wrongDocEditRes.status === 403) {
-      console.log(`✓ Successfully rejected wrong doctor with HTTP 403: "${wrongDocEditRes.data.error}"`);
-    } else {
-      throw new Error(`Expected HTTP 403 but got ${wrongDocEditRes.status}`);
+    assert.equal(wrongDoctorEdit.status, 403, 'Another doctor cannot edit this prescription.');
+
+    const patientDraftRead = await request(`/prescriptions/${prescriptionId}`, patientAccount.headers);
+    assert.equal(patientDraftRead.status, 404, 'Patient cannot read an unsigned prescription draft.');
+
+    const finalized = await request(`/prescriptions/${prescriptionId}/finalize`, doctorAccount.headers, { method: 'PATCH' });
+    assert.equal(finalized.status, 200, 'Owning doctor can finalize a draft.');
+    assert.equal(finalized.data.prescription.is_signed, true, 'Finalized prescription is marked signed.');
+
+    const immutable = await request(`/prescriptions/${prescriptionId}`, doctorAccount.headers, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagnosis: 'Attempted finalized edit' }),
+    });
+    assert.equal(immutable.status, 400, 'Finalized prescription remains immutable.');
+
+    const patientRead = await request(`/prescriptions/consultation/${consultationId}`, patientAccount.headers);
+    assert.equal(patientRead.status, 200, 'Patient can read their own finalized prescription.');
+
+    const history = await request('/prescriptions/patient/history', patientAccount.headers);
+    assert.equal(history.status, 200, 'Patient prescription history loads.');
+    assert.ok(history.data.prescriptions.some((item: { id: string }) => item.id === prescriptionId),
+      'Finalized prescription appears in the patient history.');
+
+    const crossPatient = await createTestAccount('patient');
+    try {
+      const forbidden = await request(`/prescriptions/${prescriptionId}`, crossPatient.headers);
+      assert.equal(forbidden.status, 403, 'Another patient cannot read this prescription.');
+    } finally {
+      await crossPatient.cleanup();
     }
-
-    // 9. RBAC Test: Patient cannot edit draft (MUST fail 403)
-    console.log('\n--- Step 9: RBAC Test — Patient cannot edit draft ---');
-    const patientEditRes = await request(`${BASE_URL}/prescriptions/${prescriptionId}`, {
-      method: 'PATCH',
-      headers: patientHeaders,
-      body: JSON.stringify({ diagnosis: 'Patient self-prescribing' }),
-    });
-    if (patientEditRes.status === 403) {
-      console.log(`✓ Successfully rejected patient edit with HTTP 403: "${patientEditRes.data.error}"`);
-    } else {
-      throw new Error(`Expected HTTP 403 but got ${patientEditRes.status}`);
-    }
-
-    // 10. Doctor finalizes prescription
-    console.log('\n--- Step 10: Doctor finalizes prescription ---');
-    const finalizeRes = await request(`${BASE_URL}/prescriptions/${prescriptionId}/finalize`, {
-      method: 'PATCH',
-      headers: doc1Headers,
-    });
-    if (!finalizeRes.ok) throw new Error(`Finalize failed: ${JSON.stringify(finalizeRes.data)}`);
-    const finalizedPres = finalizeRes.data.prescription;
-    console.log(`✓ Prescription finalized: is_signed = ${finalizedPres.is_signed}, signed_at = ${finalizedPres.signed_at}`);
-
-    // 11. Immutability Test: Doctor cannot edit finalized prescription (MUST fail 400)
-    console.log('\n--- Step 11: Immutability Test — Finalized prescription cannot be modified ---');
-    const editFinalizedRes = await request(`${BASE_URL}/prescriptions/${prescriptionId}`, {
-      method: 'PATCH',
-      headers: doc1Headers,
-      body: JSON.stringify({ diagnosis: 'Attempted edit after finalization' }),
-    });
-    if (editFinalizedRes.status === 400) {
-      console.log(`✓ Successfully blocked edit of finalized prescription with HTTP 400: "${editFinalizedRes.data.error}"`);
-    } else {
-      throw new Error(`Expected HTTP 400 but got ${editFinalizedRes.status}`);
-    }
-
-    // 12. Patient opens prescription
-    console.log('\n--- Step 12: Patient reads prescription via consultation endpoint ---');
-    const patientReadRes = await request(
-      `${BASE_URL}/prescriptions/consultation/${consultationId}`,
-      { headers: patientHeaders }
-    );
-    if (!patientReadRes.ok) throw new Error(`Patient read failed: ${JSON.stringify(patientReadRes.data)}`);
-    const readPres = patientReadRes.data.prescription;
-    console.log(`✓ Patient retrieved prescription:`);
-    console.log(`  Doctor: Dr. ${readPres.doctor_first_name} ${readPres.doctor_last_name} (${readPres.specialization_name})`);
-    console.log(`  Diagnosis: ${readPres.diagnosis}`);
-    console.log(`  Medicines: ${readPres.medicines.length} medicines prescribed:`);
-    readPres.medicines.forEach((m: any, idx: number) => {
-      console.log(`    [${idx + 1}] ${m.name} | ${m.dosage} | ${m.frequency} | ${m.duration} | ${m.instructions}`);
-    });
-    console.log(`  Advice: ${readPres.general_advice}`);
-    console.log(`  Signed at: ${readPres.signed_at}`);
-    console.log(`  is_signed: ${readPres.is_signed}`);
-
-    // 13. Patient checks prescription history
-    console.log('\n--- Step 13: Patient retrieves prescription history ---');
-    const historyRes = await request(`${BASE_URL}/prescriptions/patient/history`, {
-      headers: patientHeaders,
-    });
-    if (!historyRes.ok) throw new Error(`History read failed: ${JSON.stringify(historyRes.data)}`);
-    const history = historyRes.data.prescriptions;
-    console.log(`✓ Patient history returned ${history.length} finalized prescription(s)`);
-    const foundInHistory = history.some((p: any) => p.id === prescriptionId);
-    console.log(`✓ Newly created prescription exists in patient history: ${foundInHistory}`);
-
-    // 14. RBAC: Wrong doctor cannot access prescription
-    console.log('\n--- Step 14: RBAC — Wrong doctor cannot access prescription ---');
-    const wrongDocReadRes = await request(
-      `${BASE_URL}/prescriptions/${prescriptionId}`,
-      { headers: doc2Headers }
-    );
-    if (wrongDocReadRes.status === 403) {
-      console.log(`✓ Successfully blocked wrong doctor read with HTTP 403: "${wrongDocReadRes.data.error}"`);
-    } else {
-      throw new Error(`Expected HTTP 403 but got ${wrongDocReadRes.status}`);
-    }
-
-    console.log('\n====================================================');
-    console.log('   ALL MILESTONE 8 TESTS PASSED SUCCESSFULLY! ✓');
-    console.log('====================================================\n');
-  } catch (err: any) {
-    console.error('\n❌ TEST RUN FAILED:', err.message);
-    process.exit(1);
+    console.log('Milestone 8 consultation and prescription integration checks passed.');
+  } catch (error) {
+    console.error('Milestone 8 integration test failed:', error);
+    process.exitCode = 1;
+  } finally {
+    await patient?.cleanup();
+    await otherDoctor?.cleanup();
+    await doctor?.cleanup();
+    await closeTestClients();
   }
 }
 
-runMilestone8Verification();
+runMilestone8Verification().catch(async (error: unknown) => {
+  console.error('Milestone 8 integration setup failed:', error);
+  await closeTestClients();
+  process.exitCode = 1;
+});

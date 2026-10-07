@@ -89,6 +89,10 @@ export class AppointmentService {
         err.status = 403;
         throw err;
       }
+    } else {
+      const err: any = new Error('Forbidden: Access denied to this appointment');
+      err.status = 403;
+      throw err;
     }
 
     return appt;
@@ -179,6 +183,16 @@ export class AppointmentService {
         err.status = 403;
         throw err;
       }
+      const verificationStatus = await doctorRepository.getDoctorVerificationStatus(doctorProfile.doctor_id);
+      if (verificationStatus !== 'approved') {
+        const err: any = new Error('Only approved doctors may cancel appointments.');
+        err.status = 403;
+        throw err;
+      }
+    } else {
+      const err: any = new Error('Forbidden: You cannot cancel this appointment');
+      err.status = 403;
+      throw err;
     }
 
     const reasonPrefix = user.role === 'patient' ? 'Cancelled by patient' : 'Cancelled by doctor';

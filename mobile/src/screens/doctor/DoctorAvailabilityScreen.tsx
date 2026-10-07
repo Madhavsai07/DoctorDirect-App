@@ -355,6 +355,10 @@ export default function DoctorAvailabilityScreen() {
   const selectedSlots = mySlots.filter(
     (slot) => slot.date === selectedDate && slot.status !== 'cancelled'
   );
+  const selectedBookedCount = selectedSlots.filter(
+    (slot) => (slot.status === 'booked' || slot.status === 'reserved') &&
+      new Date(`${slot.date}T${slot.startTime}`).getTime() > Date.now()
+  ).length;
   const selectedWeeklyWindows = myAvailability.filter(
     (item) => item.dayOfWeek === new Date(`${selectedDate}T12:00:00`).getDay() && item.isActive
   );
@@ -418,18 +422,69 @@ export default function DoctorAvailabilityScreen() {
   };
 
   const blockSelectedDate = () => {
-    showAlert('Block date', `Block all bookings on ${selectedDate}? Booked appointments will not be moved.`, [
+    const bookingWarning = selectedBookedCount
+      ? ` This will cancel ${selectedBookedCount} booked appointment${selectedBookedCount === 1 ? '' : 's'} and notify the patient(s) to book another slot.`
+      : ' If there are booked appointments, they will be cancelled and patients will be told to book another slot.';
+    showAlert('Block date', `Block all availability on ${selectedDate}?${bookingWarning}`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Block date',
         style: 'destructive',
         onPress: async () => {
-          const result = await dispatch(saveScheduleOverride({ date: selectedDate, is_blocked: true, windows: [] }));
-          if (saveScheduleOverride.fulfilled.match(result)) refreshSelectedDate();
-          else showAlert('Error', String(result.payload ?? 'Failed to block date'));
+          const result = await dispatch(saveScheduleOverride({
+            date: selectedDate,
+            is_blocked: true,
+            windows: [],
+            expected_booked_count: selectedBookedCount,
+          }));
+          if (saveScheduleOverride.fulfilled.match(result)) {
+            refreshSelectedDate();
+            showAlert(
+              'Date blocked',
+              selectedBookedCount
+                ? `${selectedBookedCount} appointment${selectedBookedCount === 1 ? '' : 's'} cancelled. The patient(s) have been notified to rebook.`
+                : 'The date is now blocked.'
+            );
+          } else {
+            refreshSelectedDate();
+            showAlert('Unable to block date', String(result.payload ?? 'Failed to block date'));
+          }
         },
       },
     ]);
+  };
+
+  const blockSlot = async (slot: Slot) => {
+    const expectedBookedCount = slot.status === 'booked' || slot.status === 'reserved' ? 1 : 0;
+    const applyBlock = async () => {
+      const result = await dispatch(changeMySlot({
+        slotId: slot.id,
+        action: 'block',
+        expected_booked_count: expectedBookedCount,
+      }));
+      if (changeMySlot.fulfilled.match(result)) {
+        refreshSelectedDate();
+        if (expectedBookedCount) {
+          showAlert('Slot blocked', 'The appointment was cancelled and the patient was notified to book another slot.');
+        }
+      } else {
+        refreshSelectedDate();
+        showAlert('Unable to block slot', String(result.payload ?? 'The slot could not be blocked.'));
+      }
+    };
+
+    if (expectedBookedCount) {
+      showAlert(
+        'Cancel booked appointment?',
+        `Blocking ${formatTime(slot.startTime)} – ${formatTime(slot.endTime)} will cancel the appointment and notify the patient to book another slot.`,
+        [
+          { text: 'Keep appointment', style: 'cancel' },
+          { text: 'Block & cancel', style: 'destructive', onPress: applyBlock },
+        ]
+      );
+    } else {
+      await applyBlock();
+    }
   };
 
   const restoreWeeklySchedule = async () => {
@@ -657,21 +712,23 @@ export default function DoctorAvailabilityScreen() {
                         slot.status === 'blocked' ? 'Blocked' : slot.status === 'cancelled' ? 'Removed from schedule' : 'Available'}
                     </Text>
                   </View>
-                  {!isBooked && !effectivelyBlocked && slot.status === 'available' && (
+                  {!effectivelyBlocked && (slot.status === 'available' || isBooked) && (
                     <View style={styles.windowActions}>
-                      <TouchableOpacity onPress={() => {
-                        setEditingSlot(slot);
-                        setSlotStart(slot.startTime.slice(0, 5));
-                        setSlotEnd(slot.endTime.slice(0, 5));
-                      }} style={styles.slotAction}>
-                        <Text style={styles.slotActionText}>Edit time</Text>
-                      </TouchableOpacity>
+                      {!isBooked && (
+                        <TouchableOpacity onPress={() => {
+                          setEditingSlot(slot);
+                          setSlotStart(slot.startTime.slice(0, 5));
+                          setSlotEnd(slot.endTime.slice(0, 5));
+                        }} style={styles.slotAction}>
+                          <Text style={styles.slotActionText}>Edit time</Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity onPress={async () => {
-                        const result = await dispatch(changeMySlot({ slotId: slot.id, action: 'block' }));
-                        if (changeMySlot.fulfilled.match(result)) refreshSelectedDate();
-                        else showAlert('Unable to block slot', String(result.payload ?? 'The slot could not be blocked.'));
+                        await blockSlot(slot);
                       }} style={styles.slotAction}>
-                        <Text style={styles.slotActionText}>Block</Text>
+                        <Text style={[styles.slotActionText, isBooked && styles.dangerSlotActionText]}>
+                          {isBooked ? 'Block & cancel' : 'Block'}
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -849,6 +906,7 @@ const styles = StyleSheet.create({
   slotCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.xs },
   slotAction: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: spacing.borderRadius.sm, borderWidth: 1, borderColor: colors.border },
   slotActionText: { color: colors.primary, fontSize: 11, fontWeight: typography.weights.semiBold },
+  dangerSlotActionText: { color: colors.status.error },
   weekDayCard: { width: '13%', minWidth: 44, alignItems: 'center', padding: spacing.sm },
   weekDayName: { fontSize: 10, fontWeight: typography.weights.bold, color: colors.text.muted, textTransform: 'uppercase' },
   weekDayDate: { fontSize: 10, color: colors.text.secondary, marginTop: 1 },

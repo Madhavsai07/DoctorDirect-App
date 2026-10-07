@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PatientAppointmentStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
@@ -20,6 +21,7 @@ import {
   AppIcon,
   LoadingIndicator,
   EmptyState,
+  ErrorView,
 } from '../../components/common';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import {
@@ -76,7 +78,7 @@ const CANCELLABLE: AppointmentStatus[] = ['booked', 'confirmed'];
 
 export default function PatientAppointmentsScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
-  const { patientAppointments, isLoadingPatient, isActioning, actionError } =
+  const { patientAppointments, isLoadingPatient, isActioning, actionError, error } =
     useAppSelector((s) => s.appointment);
 
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
@@ -90,9 +92,7 @@ export default function PatientAppointmentsScreen({ navigation }: Props) {
     dispatch(loadPatientAppointments('all'));
   }, [dispatch]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const upcomingAppointments = patientAppointments.filter((a) =>
     isUpcoming(a.date, a.startTime) && a.status !== 'cancelled' && a.status !== 'completed'
@@ -153,6 +153,7 @@ export default function PatientAppointmentsScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         )}
+        {error && <ErrorView message={error} onRetry={load} />}
 
         {/* Feedback Success Banner */}
         {feedbackMsg && (
@@ -183,7 +184,7 @@ export default function PatientAppointmentsScreen({ navigation }: Props) {
         </View>
 
         {/* List */}
-        {displayed.length === 0 ? (
+        {displayed.length === 0 && error ? null : displayed.length === 0 ? (
         <EmptyState
             title={activeTab === 'upcoming' ? 'No Upcoming Appointments' : 'No Past Appointments'}
             message={

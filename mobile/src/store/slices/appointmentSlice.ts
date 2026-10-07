@@ -17,6 +17,7 @@ import {
   rescheduleAppointmentApi,
   updateAppointmentStatusApi,
 } from '../../services/appointments/appointmentService';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ export const loadPatientAppointments = createAsyncThunk(
       const res = await fetchPatientAppointmentsApi(status);
       return res.appointments.map(normalizeAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to load appointments');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load appointments. Please try again.'));
     }
   }
 );
@@ -63,7 +64,7 @@ export const loadDoctorAppointments = createAsyncThunk(
       const res = await fetchDoctorAppointmentsApi(status);
       return res.appointments.map(normalizeAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to load appointments');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load appointments. Please try again.'));
     }
   }
 );
@@ -78,7 +79,7 @@ export const bookSlot = createAsyncThunk(
       const res = await bookSlotApi(payload);
       return normalizeAppointment(res.appointment as RawAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Booking failed');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to book this appointment. Please try again.'));
     }
   }
 );
@@ -90,7 +91,7 @@ export const confirmAppointment = createAsyncThunk(
       const res = await confirmAppointmentApi(appointmentId);
       return normalizeAppointment(res.appointment as RawAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Confirmation failed');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to confirm this appointment. Please try again.'));
     }
   }
 );
@@ -105,7 +106,7 @@ export const cancelAppointment = createAsyncThunk(
       const res = await cancelAppointmentApi(payload.appointmentId, payload.reason);
       return normalizeAppointment(res.appointment as RawAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Cancellation failed');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to cancel this appointment. Please try again.'));
     }
   }
 );
@@ -120,7 +121,7 @@ export const rescheduleAppointment = createAsyncThunk(
       const res = await rescheduleAppointmentApi(payload.appointmentId, payload.new_slot_id);
       return normalizeAppointment(res.appointment as RawAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Reschedule failed');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to reschedule this appointment. Please try again.'));
     }
   }
 );
@@ -139,7 +140,7 @@ export const updateAppointmentStatus = createAsyncThunk(
       );
       return normalizeAppointment(res.appointment as RawAppointment);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Status update failed');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to update this appointment. Please try again.'));
     }
   }
 );

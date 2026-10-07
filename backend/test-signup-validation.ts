@@ -1,338 +1,155 @@
+import { randomUUID } from 'node:crypto';
 import { pool } from './src/db/pool';
-import crypto from 'crypto';
+import { closeTestClients, createTestAccounts, TestAccount } from './test-support/auth';
 
-const API_BASE = 'http://localhost:5001/api/v1';
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-async function runSignupValidationTests() {
-  console.log('=== Running Signup Form Validation Tests (Patient & Doctor) ===\n');
-
+async function runSignupValidationTests(): Promise<void> {
+  let patientIdentity: TestAccount | undefined;
+  let doctorIdentity: TestAccount | undefined;
+  let duplicateIdentity: TestAccount | undefined;
+  const conflictUserIds: string[] = [];
   let passed = 0;
   let failed = 0;
-
-  function assert(cond: boolean, msg: string) {
-    if (cond) {
-      console.log(`  PASS: ${msg}`);
-      passed++;
+  const assert = (condition: boolean, message: string): void => {
+    if (condition) {
+      console.log(`  PASS: ${message}`);
+      passed += 1;
     } else {
-      console.error(`  FAIL: ${msg}`);
-      failed++;
+      console.error(`  FAIL: ${message}`);
+      failed += 1;
     }
-  }
-
-  const createdUserIds: string[] = [];
+  };
+  const post = (path: string, headers: Record<string, string>, body: Record<string, unknown>) =>
+    fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
 
   try {
-    const specRes = await pool.query<{ name: string }>('SELECT name FROM specializations LIMIT 1');
-    const validSpec = specRes.rows[0]?.name || 'Cardiology';
-
-    // ── 1. Email Validation Tests ───────────────────────────────────────────
-    console.log('[Test 1] Email Format Validations...');
-
-    // Invalid email: "doctorsdf"
-    const invalidEmailRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer dev-token-doctorsdf',
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-      }),
-    });
-    assert(invalidEmailRes.status === 422, `Invalid email 'doctorsdf' rejected with 422 (got ${invalidEmailRes.status})`);
-
-    // Invalid email: "invalid@domain"
-    const missingTldRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer dev-token-invalid@domain',
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-      }),
-    });
-    assert(missingTldRes.status === 422, `Invalid email 'invalid@domain' rejected with 422 (got ${missingTldRes.status})`);
-
-    // ── 2. Name Validation Tests ────────────────────────────────────────────
-    console.log('\n[Test 2] Name Format Validations...');
-
-    // Invalid name with numbers
-    const numNameEmail = `val.test.${Date.now()}@clinic.com`;
-    const numNameRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane123',
-        lastName: 'Doe',
-      }),
-    });
-    assert(numNameRes.status === 422, `First name with numbers rejected with 422 (got ${numNameRes.status})`);
-
-    // Invalid name with symbols
-    const symNameRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe!@#',
-      }),
-    });
-    assert(symNameRes.status === 422, `Last name with symbols rejected with 422 (got ${symNameRes.status})`);
-
-    // ── 3. Phone Number Validation Tests ────────────────────────────────────
-    console.log('\n[Test 3] Phone Number Validations...');
-
-    // Phone with letters
-    const letterPhoneRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        phone: '12345abcde',
-      }),
-    });
-    assert(letterPhoneRes.status === 422, `Phone with letters rejected with 422 (got ${letterPhoneRes.status})`);
-
-    // Phone too short
-    const shortPhoneRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        phone: '123',
-      }),
-    });
-    assert(shortPhoneRes.status === 422, `Short phone rejected with 422 (got ${shortPhoneRes.status})`);
-
-    // ── 4. Date of Birth Validation Tests ───────────────────────────────────
-    console.log('\n[Test 4] Date of Birth Validations...');
-
-    // Future date of birth
-    const futureDobRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        dateOfBirth: '2099-12-31',
-      }),
-    });
-    assert(futureDobRes.status === 422, `Future date of birth rejected with 422 (got ${futureDobRes.status})`);
-
-    // Invalid calendar date
-    const invalidCalDobRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        dateOfBirth: '2023-02-31',
-      }),
-    });
-    assert(invalidCalDobRes.status === 422, `Invalid calendar date '2023-02-31' rejected with 422 (got ${invalidCalDobRes.status})`);
-
-    // Arbitrary text date
-    const arbitraryDobRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${numNameEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Jane',
-        lastName: 'Doe',
-        dateOfBirth: 'twenty-five-years-old',
-      }),
-    });
-    assert(arbitraryDobRes.status === 422, `Arbitrary text date of birth rejected with 422 (got ${arbitraryDobRes.status})`);
-
-    // ── 5. Doctor Numeric & License Field Validations ───────────────────────
-    console.log('\n[Test 5] Doctor Fields (Experience, Fee, License) Validations...');
-
-    const docTestEmail = `doc.val.${Date.now()}@clinic.com`;
-
-    // Negative experience
-    const negExpRes = await fetch(`${API_BASE}/auth/register/doctor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${docTestEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Gregory',
-        lastName: 'House',
-        specializationName: validSpec,
-        licenseNumber: 'MED-12345',
-        experienceYears: -5,
-        consultationFee: 100,
-        qualification: 'MD',
-      }),
-    });
-    assert(negExpRes.status === 422, `Negative experience years rejected with 422 (got ${negExpRes.status})`);
-
-    // Non-numeric experience
-    const strExpRes = await fetch(`${API_BASE}/auth/register/doctor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${docTestEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Gregory',
-        lastName: 'House',
-        specializationName: validSpec,
-        licenseNumber: 'MED-12345',
-        experienceYears: 'five',
-        consultationFee: 100,
-        qualification: 'MD',
-      }),
-    });
-    assert(strExpRes.status === 422, `Non-numeric experience years rejected with 422 (got ${strExpRes.status})`);
-
-    // Negative consultation fee
-    const negFeeRes = await fetch(`${API_BASE}/auth/register/doctor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${docTestEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Gregory',
-        lastName: 'House',
-        specializationName: validSpec,
-        licenseNumber: 'MED-12345',
-        experienceYears: 10,
-        consultationFee: -50,
-        qualification: 'MD',
-      }),
-    });
-    assert(negFeeRes.status === 422, `Negative consultation fee rejected with 422 (got ${negFeeRes.status})`);
-
-    // Invalid license format
-    const invalidLicRes = await fetch(`${API_BASE}/auth/register/doctor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${docTestEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Gregory',
-        lastName: 'House',
-        specializationName: validSpec,
-        licenseNumber: 'LIC!@#$%',
-        experienceYears: 10,
-        consultationFee: 100,
-        qualification: 'MD',
-      }),
-    });
-    assert(invalidLicRes.status === 422, `Invalid license format rejected with 422 (got ${invalidLicRes.status})`);
-
-    // ── 6. Successful Patient Registration with Valid Data ───────────────────
-    console.log('\n[Test 6] Successful Patient Registration with Validated Fields...');
-
-    const validPatientEmail = `patient.valid.${Date.now()}@health.org`;
-    const validPatientRes = await fetch(`${API_BASE}/auth/register/patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${validPatientEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Sarah',
-        lastName: 'Connor',
-        phone: '+14155552671',
-        dateOfBirth: '1985-04-12',
-        emergencyContactName: 'John Connor',
-        emergencyContactPhone: '+14155559999',
-      }),
-    });
-    const validPatientData: any = await validPatientRes.json();
-    assert(validPatientRes.status === 201, `Valid patient registration responds 201 (got ${validPatientRes.status})`);
-    assert(validPatientData.user?.first_name === 'Sarah', 'Patient first name saved correctly');
-    if (validPatientData.user?.id) createdUserIds.push(validPatientData.user.id);
-
-    // ── 7. Successful Doctor Registration with Valid Data ────────────────────
-    console.log('\n[Test 7] Successful Doctor Registration with Validated Fields...');
-
-    const validDoctorEmail = `doctor.valid.${Date.now()}@medical.org`;
-    const validDoctorRes = await fetch(`${API_BASE}/auth/register/doctor`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer dev-token-${validDoctorEmail}`,
-      },
-      body: JSON.stringify({
-        firstName: 'Leonard',
-        lastName: 'McCoy',
-        phone: '+18005550199',
-        specializationName: validSpec,
-        licenseNumber: `MED-${Date.now()}`,
-        experienceYears: 15,
-        consultationFee: 125.5,
-        qualification: 'MD, FACP',
-        bio: 'Senior consultant physician in active practice.',
-      }),
-    });
-    const validDoctorData: any = await validDoctorRes.json();
-    assert(validDoctorRes.status === 201, `Valid doctor registration responds 201 (got ${validDoctorRes.status})`);
-    assert(validDoctorData.user?.first_name === 'Leonard', 'Doctor first name saved correctly');
-    if (validDoctorData.user?.id) createdUserIds.push(validDoctorData.user.id);
-
-    // Verify doctor is pending
-    const docRow = await pool.query<{ id: string; verification_status: string }>(
-      'SELECT id, verification_status FROM doctors WHERE user_id = $1',
-      [validDoctorData.user?.id]
+    const identities = await createTestAccounts([
+      { role: null },
+      { role: null },
+      { role: null },
+    ]);
+    [patientIdentity, doctorIdentity, duplicateIdentity] = identities;
+    const patientAuth = identities[0];
+    const doctorAuth = identities[1];
+    const duplicateAuth = identities[2];
+    const specRes = await pool.query<{ name: string }>(
+      'SELECT name FROM specializations ORDER BY name LIMIT 1'
     );
-    assert(docRow.rows[0]?.verification_status === 'pending', "Newly registered doctor defaults to 'pending'");
+    if (!specRes.rows[0]) throw new Error('The specialization catalog must be seeded.');
+    const specialization = specRes.rows[0].name;
 
-    // ── 8. Cleanup ──────────────────────────────────────────────────────────
-    console.log('\n[Cleanup] Cleaning up created test records...');
-    for (const uid of createdUserIds) {
-      const doc = await pool.query<{ id: string }>('SELECT id FROM doctors WHERE user_id = $1', [uid]);
-      if (doc.rows[0]) {
-        await pool.query('DELETE FROM notifications WHERE doctor_id = $1', [doc.rows[0].id]);
-        await pool.query('DELETE FROM doctors WHERE id = $1', [doc.rows[0].id]);
-      }
-      await pool.query('DELETE FROM patients WHERE user_id = $1', [uid]);
-      await pool.query('DELETE FROM users WHERE id = $1', [uid]);
+    for (const [description, body] of [
+      ['missing required name', { lastName: 'Valid' }],
+      ['name containing digits', { firstName: 'Jane123', lastName: 'Doe' }],
+      ['name containing unsupported punctuation', { firstName: 'Jane', lastName: 'Doe!' }],
+      ['phone containing letters', { firstName: 'Jane', lastName: 'Doe', phone: '12345abcde' }],
+      ['phone shorter than minimum length', { firstName: 'Jane', lastName: 'Doe', phone: '123' }],
+      ['future date of birth', { firstName: 'Jane', lastName: 'Doe', dateOfBirth: '2099-12-31' }],
+      ['invalid calendar date', { firstName: 'Jane', lastName: 'Doe', dateOfBirth: '2023-02-31' }],
+      ['malformed date of birth', { firstName: 'Jane', lastName: 'Doe', dateOfBirth: 'not-a-date' }],
+    ] as const) {
+      const response = await post('/auth/register/patient', patientAuth.headers, body);
+      const responseBody: any = await response.json();
+      assert(response.status === 422, `${description} is rejected with 422 (got ${response.status})`);
+      assert(typeof responseBody.error === 'string', `${description} returns a readable validation message.`);
     }
-    console.log('Cleanup finished.');
 
-  } catch (err) {
-    console.error('Validation test error:', err);
-    failed++;
+    const invalidDoctorBodies: Array<[string, Record<string, unknown>]> = [
+      ['negative experience', { experienceYears: -1, consultationFee: 100, licenseNumber: 'MED-123' }],
+      ['non-numeric experience', { experienceYears: 'five', consultationFee: 100, licenseNumber: 'MED-123' }],
+      ['experience above maximum', { experienceYears: 71, consultationFee: 100, licenseNumber: 'MED-123' }],
+      ['negative consultation fee', { experienceYears: 10, consultationFee: -50, licenseNumber: 'MED-123' }],
+      ['non-numeric consultation fee', { experienceYears: 10, consultationFee: 'expensive', licenseNumber: 'MED-123' }],
+      ['invalid license format', { experienceYears: 10, consultationFee: 100, licenseNumber: 'LIC!@#' }],
+    ];
+    for (const [description, fields] of invalidDoctorBodies) {
+      const response = await post('/auth/register/doctor', doctorAuth.headers, {
+        firstName: 'Gregory',
+        lastName: 'House',
+        specializationName: specialization,
+        qualification: 'MD',
+        idCardUrl: `${doctorAuth.authUser.id}/test-id-card.jpg`,
+        ...fields,
+      });
+      assert(response.status === 422, `${description} is rejected with 422 (got ${response.status})`);
+    }
+    const noIdCard = await post('/auth/register/doctor', doctorAuth.headers, {
+      firstName: 'Gregory',
+      lastName: 'House',
+      specializationName: specialization,
+      licenseNumber: 'MED-12345',
+      experienceYears: 10,
+      consultationFee: 100,
+      qualification: 'MD',
+    });
+    assert(noIdCard.status === 422, `Doctor registration without an ID-card path is rejected (got ${noIdCard.status})`);
+
+    const conflictUser = await pool.query<{ id: string }>(
+      `INSERT INTO users (auth_user_id, email, role, first_name, last_name)
+       VALUES ($1, $2, 'patient', 'Existing', 'Account') RETURNING id`,
+      [randomUUID(), duplicateAuth.email]
+    );
+    conflictUserIds.push(conflictUser.rows[0].id);
+    const duplicate = await post('/auth/register/patient', duplicateAuth.headers, {
+      firstName: 'Duplicate',
+      lastName: 'Account',
+    });
+    const duplicateBody: any = await duplicate.json();
+    assert(duplicate.status === 409, `Duplicate email is rejected with 409 (got ${duplicate.status})`);
+    assert(duplicateBody.error === 'An account with this email already exists. Please sign in instead.',
+      'Duplicate email returns the clear sign-in guidance without database details.');
+
+    const patientRegistration = await post('/auth/register/patient', patientAuth.headers, {
+      firstName: 'Sarah',
+      lastName: 'Connor',
+      phone: '+14155552671',
+      dateOfBirth: '1985-04-12',
+      emergencyContactName: 'John Connor',
+      emergencyContactPhone: '+14155559999',
+    });
+    const patientBody: any = await patientRegistration.json();
+    assert(patientRegistration.status === 201, `Valid patient registration succeeds (got ${patientRegistration.status})`);
+    assert(patientBody.user?.first_name === 'Sarah', 'Patient registration persists the supplied name.');
+
+    const doctorRegistration = await post('/auth/register/doctor', doctorAuth.headers, {
+      firstName: 'Leonard',
+      lastName: 'McCoy',
+      phone: '+18005550199',
+      specializationName: specialization,
+      licenseNumber: `MED-${doctorAuth.authUser.id}`,
+      experienceYears: 15,
+      consultationFee: 125.5,
+      qualification: 'MD, FACP',
+      bio: 'Integration test physician.',
+      idCardUrl: `${doctorAuth.authUser.id}/test-id-card.jpg`,
+    });
+    const doctorBody: any = await doctorRegistration.json();
+    assert(doctorRegistration.status === 201, `Valid doctor registration succeeds (got ${doctorRegistration.status})`);
+    assert(doctorBody.user?.first_name === 'Leonard', 'Doctor registration persists the supplied name.');
+    const doctorStatus = await pool.query<{ verification_status: string }>(
+      'SELECT verification_status FROM doctors WHERE user_id = $1',
+      [doctorBody.user.id]
+    );
+    assert(doctorStatus.rows[0]?.verification_status === 'pending', 'New doctor registration requires admin approval.');
+
+    console.log(`\nSignup validation results: ${passed} passed, ${failed} failed.`);
   } finally {
-    await pool.end();
+    for (const userId of conflictUserIds) await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    await doctorIdentity?.cleanup();
+    await patientIdentity?.cleanup();
+    await duplicateIdentity?.cleanup();
+    await closeTestClients();
   }
-
-  console.log(`\n========================================`);
-  console.log(`Results: ${passed} passed, ${failed} failed`);
-  console.log(`========================================\n`);
-
-  if (failed > 0) process.exit(1);
+  if (failed > 0) process.exitCode = 1;
 }
 
-runSignupValidationTests();
+runSignupValidationTests().catch(async (error: unknown) => {
+  console.error('Signup validation setup failed:', error);
+  await closeTestClients();
+  process.exitCode = 1;
+});

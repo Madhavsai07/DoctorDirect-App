@@ -88,32 +88,47 @@ export class PrescriptionRepository {
   /** Create a new prescription draft (is_signed = false) */
   async createPrescription(dto: PrescriptionCreateDto): Promise<DbPrescriptionDetail> {
     const { consultationId, doctorId, patientId, diagnosis, medicines, generalAdvice } = dto;
-    const existing = await this.getPrescriptionByConsultationId(consultationId);
-    if (existing) {
-      if (existing.is_signed) {
-        const err: any = new Error('Prescription for this consultation has already been finalized');
-        err.status = 400;
-        throw err;
+    const client = await pool.connect();
+    let prescriptionId: string;
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text))', [consultationId]);
+      const existing = await client.query<{ id: string; is_signed: boolean }>(
+        `SELECT id, is_signed
+         FROM prescriptions
+         WHERE consultation_id = $1
+         ORDER BY created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [consultationId]
+      );
+      if (existing.rows[0]) {
+        if (existing.rows[0].is_signed) {
+          throw Object.assign(
+            new Error('Prescription for this consultation has already been finalized'),
+            { status: 400 }
+          );
+        }
+        prescriptionId = existing.rows[0].id;
+      } else {
+        const created = await client.query<{ id: string }>(
+          `INSERT INTO prescriptions (
+            consultation_id, doctor_id, patient_id, diagnosis, medicines,
+            general_advice, signature_metadata, is_signed, signed_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,'{}'::jsonb,false,null)
+          RETURNING id`,
+          [consultationId, doctorId, patientId, diagnosis, JSON.stringify(medicines), generalAdvice ?? null]
+        );
+        prescriptionId = created.rows[0].id;
       }
-      return existing;
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const res = await pool.query<DbPrescription>(
-      `INSERT INTO prescriptions (
-        consultation_id,
-        doctor_id,
-        patient_id,
-        diagnosis,
-        medicines,
-        general_advice,
-        signature_metadata,
-        is_signed,
-        signed_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,'{}'::jsonb,false,null)
-       RETURNING *;`,
-      [consultationId, doctorId, patientId, diagnosis, JSON.stringify(medicines), generalAdvice ?? null]
-    );
-    const detailed = await this.getPrescriptionById(res.rows[0].id);
+    const detailed = await this.getPrescriptionById(prescriptionId!);
     return detailed!;
   }
 
@@ -159,34 +174,39 @@ export class PrescriptionRepository {
     doctorId: string,
     dto: PrescriptionUpdateDto
   ): Promise<DbPrescription> {
-    // Ensure the doctor owns the prescription and it is not yet signed
-    const pres = await this.getPrescriptionById(prescriptionId);
-    if (!pres) {
-      const err: any = new Error('Prescription not found');
-      err.status = 404;
-      throw err;
-    }
-    if (pres.doctor_id !== doctorId) {
-      const err: any = new Error('Forbidden: You are not the prescribing doctor');
-      err.status = 403;
-      throw err;
-    }
-    if (pres.is_signed) {
-      const err: any = new Error('Cannot edit a finalized prescription');
-      err.status = 400;
-      throw err;
-    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query<Pick<DbPrescription, 'doctor_id' | 'is_signed'>>(
+        'SELECT doctor_id, is_signed FROM prescriptions WHERE id = $1 FOR UPDATE',
+        [prescriptionId]
+      );
+      const pres = locked.rows[0];
+      if (!pres) throw Object.assign(new Error('Prescription not found'), { status: 404 });
+      if (pres.doctor_id !== doctorId) {
+        throw Object.assign(new Error('Forbidden: You are not the prescribing doctor'), { status: 403 });
+      }
+      if (pres.is_signed) {
+        throw Object.assign(new Error('Cannot edit a finalized prescription'), { status: 400 });
+      }
 
-    const { diagnosis, medicines, generalAdvice } = dto;
-    await pool.query<DbPrescription>(
-      `UPDATE prescriptions SET
-        diagnosis = COALESCE($1, diagnosis),
-        medicines = COALESCE($2, medicines),
-        general_advice = COALESCE($3, general_advice),
-        updated_at = NOW()
-       WHERE id = $4;`,
-      [diagnosis ?? null, medicines ? JSON.stringify(medicines) : null, generalAdvice ?? null, prescriptionId]
-    );
+      await client.query(
+        `UPDATE prescriptions SET
+          diagnosis = COALESCE($1, diagnosis),
+          medicines = COALESCE($2, medicines),
+          general_advice = COALESCE($3, general_advice),
+          updated_at = NOW()
+         WHERE id = $4 AND is_signed = FALSE`,
+        [dto.diagnosis ?? null, dto.medicines ? JSON.stringify(dto.medicines) : null,
+          dto.generalAdvice ?? null, prescriptionId]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
     const updated = await this.getPrescriptionById(prescriptionId);
     return updated!;
   }

@@ -5,7 +5,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loadNotifications, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from '../../store/slices/notificationSlice';
 import type { Notification } from '../../types/notification';
 import { colors, spacing, typography } from '../../theme';
-import { AppIcon, EmptyState, LoadingIndicator, ScreenHeader } from '../../components/common';
+import { AppIcon, EmptyState, ErrorView, LoadingIndicator, ScreenHeader } from '../../components/common';
 
 function formatTime(value: string): string {
   const date = new Date(value);
@@ -19,7 +19,7 @@ function formatTime(value: string): string {
 export default function NotificationsScreen() {
   const dispatch = useAppDispatch();
   const navigation = useNavigation<any>();
-  const { items, unreadCount, isLoading } = useAppSelector((state) => state.notification);
+  const { items, unreadCount, isLoading, error } = useAppSelector((state) => state.notification);
   const role = useAppSelector((state) => state.auth.role);
 
   const refresh = useCallback(() => {
@@ -83,16 +83,19 @@ export default function NotificationsScreen() {
           <Text style={styles.readAllText}>Mark all as read</Text>
         </Pressable>
       )}
+      {error && <ErrorView message={error} onRetry={refresh} />}
       {isLoading && items.length === 0 ? <LoadingIndicator message="Loading notifications…" /> : (
-        <FlatList
-          data={items}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          onRefresh={refresh}
-          refreshing={isLoading}
-          contentContainerStyle={items.length ? styles.list : styles.emptyList}
-          ListEmptyComponent={<EmptyState title="No notifications yet" message="Appointment and consultation updates will appear here." icon="info" />}
-        />
+        error && items.length === 0 ? null : (
+          <FlatList
+            data={items}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            onRefresh={refresh}
+            refreshing={isLoading}
+            contentContainerStyle={items.length ? styles.list : styles.emptyList}
+            ListEmptyComponent={<EmptyState title="No notifications yet" message="Appointment and consultation updates will appear here." icon="info" />}
+          />
+        )
       )}
     </View>
   );

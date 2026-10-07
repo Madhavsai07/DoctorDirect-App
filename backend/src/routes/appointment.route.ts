@@ -146,6 +146,7 @@ appointmentRouter.patch(
 appointmentRouter.patch(
   '/:id/cancel',
   requireAuth,
+  requireRole('patient', 'doctor'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { cancellation_reason } = req.body;

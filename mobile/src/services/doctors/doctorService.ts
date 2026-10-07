@@ -127,6 +127,7 @@ export async function saveMyScheduleOverride(payload: {
   date: string;
   is_blocked: boolean;
   windows: Array<{ start_time: string; end_time: string; slot_duration_minutes: number }>;
+  expected_booked_count?: number;
 }): Promise<void> {
   await apiClient.put('/doctor/me/schedule-overrides', payload);
 }
@@ -140,6 +141,7 @@ export async function updateMySlot(payload: {
   action: 'edit' | 'block' | 'restore';
   start_time?: string;
   end_time?: string;
+  expected_booked_count?: number;
 }): Promise<SlotsResponse['slots'][0]> {
   const { slotId, ...body } = payload;
   const res = await apiClient.patch<{ slot: SlotsResponse['slots'][0] }>(

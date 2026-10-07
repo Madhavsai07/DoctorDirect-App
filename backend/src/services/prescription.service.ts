@@ -69,6 +69,9 @@ export class PrescriptionService {
         err.status = 403;
         throw err;
       }
+      if (!pres.is_signed) {
+        throw Object.assign(new Error('Prescription not found'), { status: 404 });
+      }
     } else {
       const err: any = new Error('Forbidden: Invalid role');
       err.status = 403;
@@ -106,7 +109,11 @@ export class PrescriptionService {
       throw err;
     }
 
-    return prescriptionRepository.getPrescriptionByConsultationId(consultationId);
+    const prescription = await prescriptionRepository.getPrescriptionByConsultationId(consultationId);
+    if (requester.role === 'patient' && prescription && !prescription.is_signed) {
+      throw Object.assign(new Error('Prescription not found'), { status: 404 });
+    }
+    return prescription;
   }
 
   /** Retrieve all prescriptions for a patient (history) */

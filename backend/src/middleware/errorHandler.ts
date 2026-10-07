@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import config from '../config/env';
 
 export interface AppError extends Error {
   statusCode?: number;
   /** Alternative to statusCode used by service-layer thrown errors */
   status?: number;
   code?: string;
+  constraint?: string;
 }
 
 /**
@@ -25,7 +25,9 @@ export function errorHandler(
     switch (err.code) {
       case '23505': // unique_violation
         statusCode = 409;
-        message = 'Conflict: Record already exists.';
+        message = err.constraint?.includes('email')
+          ? 'An account with this email already exists. Please sign in instead.'
+          : 'Conflict: Record already exists.';
         break;
       case '23503': // foreign_key_violation
         statusCode = 400;
@@ -50,10 +52,12 @@ export function errorHandler(
   // Log in development or error conditions
   if (statusCode >= 500) {
     console.error('[Error Handler]', err);
+    message = statusCode === 503
+      ? 'Service temporarily unavailable. Please try again shortly.'
+      : 'An unexpected server error occurred. Please try again.';
   }
 
   res.status(statusCode).json({
     error: message,
-    ...(config.nodeEnv === 'development' && statusCode >= 500 ? { stack: err.stack } : {}),
   });
 }

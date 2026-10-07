@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { DoctorAppointmentStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
@@ -20,6 +21,7 @@ import {
   AppIcon,
   LoadingIndicator,
   EmptyState,
+  ErrorView,
 } from '../../components/common';
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import {
@@ -75,7 +77,7 @@ type TabKey = 'today' | 'upcoming' | 'past';
 
 export default function DoctorAppointmentsScreen({ navigation }: Props) {
   const dispatch = useAppDispatch();
-  const { doctorAppointments, isLoadingDoctor, isActioning, actionError } =
+  const { doctorAppointments, isLoadingDoctor, isActioning, actionError, error } =
     useAppSelector((s) => s.appointment);
 
   const [activeTab, setActiveTab] = useState<TabKey>('today');
@@ -90,7 +92,7 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
     dispatch(loadDoctorAppointments('all'));
   }, [dispatch]);
 
-  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Partition
   const todayAppts = doctorAppointments.filter(
@@ -198,6 +200,7 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         )}
+        {error && <ErrorView message={error} onRetry={load} />}
 
         {/* Feedback Success Banner */}
         {feedbackMsg && (
@@ -240,7 +243,7 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
         )}
 
         {/* List */}
-        {displayed.length === 0 ? (
+        {displayed.length === 0 && error ? null : displayed.length === 0 ? (
           <EmptyState
             title={
               activeTab === 'today' ? 'No Appointments Today' :

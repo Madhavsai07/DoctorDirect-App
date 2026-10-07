@@ -2,7 +2,7 @@
 
 ## Overview
 
-DoctorDirect uses **PostgreSQL** as the authoritative server-side relational database for all persistent data including users, doctors, slots, appointments, consultations, prescriptions, transcripts, summaries, device tokens, and offline synchronization metadata.
+DoctorDirect uses **PostgreSQL** as the authoritative store for application accounts, doctor verification, schedules, appointments, consultations, prescriptions, and notifications. Migrations through `012` define the current schema. Some retained tables (such as transcripts, summaries, device tokens, and sync metadata) are schema artifacts and do not mean that speech-to-text, AI summarization, push delivery, or offline synchronization is implemented.
 
 ---
 
@@ -18,13 +18,18 @@ DoctorDirect uses **PostgreSQL** as the authoritative server-side relational dat
 ```text
 database/
 ├── migrations/
-│   ├── 001_initial_schema.sql            # Initial migration creating all 13 core tables
-│   ├── 001_initial_schema_down.sql       # Rollback migration for 001 in reverse order
-│   ├── 002_schema_hardening.sql          # Partial index on slots, RESTRICT on medical records, sync tombstones
-│   ├── 009_doctor_id_card.sql            # Stores uploaded doctor ID-card object paths
-│   ├── 010_remove_demo_accounts.sql      # Removes only known seeded development accounts
-│   ├── 011_cascade_user_deletion.sql     # Removes Doctor 02 and cascades user-owned data
-│   └── 012_doctor_schedule_overrides.sql # Date-specific schedule overrides and manual slot edits
+│   ├── 001_initial_schema.sql            # Core relational tables and indexes
+│   ├── 002_schema_hardening.sql          # Slot uniqueness, FK hardening, sync tombstones
+│   ├── 003_consultation_clinical_records.sql
+│   ├── 004_notifications.sql
+│   ├── 005_supabase_auth.sql
+│   ├── 006_link_admin_user.sql
+│   ├── 007_doctor_verification.sql
+│   ├── 008_notification_doctor_reference.sql
+│   ├── 009_doctor_id_card.sql
+│   ├── 010_remove_demo_accounts.sql      # Removes known seeded development accounts
+│   ├── 011_cascade_user_deletion.sql     # Cascades account-owned data on deletion
+│   └── 012_doctor_schedule_overrides.sql # Date overrides, windows, manual slot edits
 ├── seeds/
 │   └── 001_seed_dev_data.sql             # Specialization catalog only; no demo accounts
 └── README.md                             # Database documentation (this file)
@@ -92,7 +97,7 @@ npm run migrate:status
 
 ---
 
-## Implemented Schema (13 Tables)
+## Schema (16 Tables)
 
 | # | Table | Purpose | Key Constraints & Relations |
 | :---: | :--- | :--- | :--- |
@@ -102,13 +107,16 @@ npm run migrate:status
 | 4 | `doctors` | Physician credentials, fees, and bio | 1-to-1 with `users.id` (CASCADE deletion), FK `specializations.id` |
 | 5 | `availability` | Recurring weekly doctor working hours | FK `doctors.id`, day of week (0-6), end_time > start_time |
 | 6 | `slots` | Specific calendar appointment slots | FK `doctors.id`, unique `(doctor_id, date, start_time)` |
-| 7 | `appointments` | Booked patient-doctor appointments | FK `patients.id`, `doctors.id`, and `slots.id` (CASCADE); partial unique index on `slot_id` (active bookings only) |
-| 8 | `consultations` | WebRTC video session rooms | 1-to-1 with `appointments.id` (CASCADE), unique `room_id` |
-| 9 | `transcripts` | Consultation audio STT transcript | 1-to-1 with `consultations.id` (CASCADE) |
-| 10 | `summaries` | AI draft and doctor-approved summary | 1-to-1 with `consultations.id` (CASCADE), FK `doctors.id` approval gate |
-| 11 | `prescriptions` | Digitally signed doctor prescriptions | FK `consultations.id`, `doctors.id`, and `patients.id` (CASCADE) |
-| 12 | `device_tokens` | Mobile push notification device tokens | FK `users.id` (CASCADE), unique `(user_id, token)` |
-| 13 | `sync_metadata` | Offline-first delta synchronization | FK `users.id`, unique `(user_id, entity_type, entity_id)`, with `is_deleted` and `deleted_at` tombstones |
+| 7 | `appointments` | Booked patient-doctor appointments | FKs to patients, doctors, and slots; active-slot partial unique index |
+| 8 | `consultations` | Consultation status and clinical records | 1-to-1 with `appointments.id`; not a WebRTC implementation |
+| 9 | `transcripts` | Transcript data schema | FK to consultations; speech-to-text flow is not implemented |
+| 10 | `summaries` | Summary data schema | FK to consultations and approving doctor; AI summary flow is not implemented |
+| 11 | `prescriptions` | Doctor-authored prescriptions | FKs to consultations, doctors, and patients |
+| 12 | `device_tokens` | Device-token storage schema | FK to users; push delivery is not implemented |
+| 13 | `sync_metadata` | Synchronization metadata schema | FK to users; offline synchronization is not implemented |
+| 14 | `notifications` | In-app notification records | Recipient FK and optional appointment, consultation, prescription, and doctor references |
+| 15 | `schedule_date_overrides` | Per-doctor date override or blocked day | Unique `(doctor_id, override_date)`; FK to doctors |
+| 16 | `schedule_date_override_windows` | Working-time windows for a date override | FK to an override; slot duration constrained to 15/30/45/60 minutes |
 
 ---
 
@@ -121,10 +129,10 @@ npm run migrate:status
      ON appointments(slot_id)
      WHERE status NOT IN ('cancelled', 'rescheduled');
    ```
-   This guarantees that only one active appointment can occupy a slot at any given time, while preserving historical cancelled and rescheduled appointments for patient audit trails.
+   This prevents two active appointments from claiming the same slot while retaining cancelled or rescheduled appointment records.
 
 2. **User Deletion and Related Records**:
-   Migration 011 sets user-owned profiles and their dependent scheduling, appointment, consultation, prescription, and notification records to `ON DELETE CASCADE`. Deleting a row from `users` permanently deletes those linked records as well. This is destructive and should only be used when the account and its records are intended to be erased.
+   Migration 011 changes the relevant account-owned foreign keys to `ON DELETE CASCADE`. Deleting a row from `users` permanently deletes linked profiles and dependent scheduling, appointment, consultation, prescription, and notification data. This is destructive and should only be used when permanent erasure is intended.
 
 3. **Sync Tombstones**:
    `sync_metadata` includes `is_deleted` (BOOLEAN) and `deleted_at` (TIMESTAMPTZ) to enable client SQLite databases to process delta deletions during synchronization.
@@ -132,7 +140,7 @@ npm run migrate:status
 4. **Doctor scheduling**:
    Weekly `availability` rows remain recurring windows and allow multiple non-overlapping windows per weekday. Slot durations are restricted to 15, 30, 45, or 60 minutes. Migration 012 adds one date override per doctor/date, with zero or more custom windows; a blocked override represents leave or a holiday without changing weekly rules. `slots.is_manual_override` preserves doctor-edited, blocked, or restored individual slots when the horizon is regenerated. Generation reconciles only unbooked generated slots and never moves or deletes a slot with an active appointment.
 
-   The doctor calendar offers horizons of 7, 14, 21, or 30 days. Doctor slot reads generate/reconcile within the selected range; patient slot reads do the same and return only future, available slots that fit the effective weekly/date-specific schedule. Date overrides take precedence over weekly rules. A blocked date prevents new bookings while leaving booked appointments unchanged.
+   The doctor calendar offers horizons of 7, 14, 21, or 30 days. Doctor slot reads generate/reconcile within the selected range; patient slot reads do the same and return only future, available slots that fit the effective weekly/date-specific schedule. Date overrides take precedence over weekly rules. Blocking a day with booked appointments requires explicit doctor confirmation, cancels the affected appointments, and notifies patients to book another slot.
 
    If a weekly window or date override changes, affected future, unbooked generated slots are reconciled the next time that date range is generated/read. Manually edited slots retain their individual override; remove that slot override by restoring or blocking the slot through the doctor controls.
 
@@ -169,22 +177,20 @@ WITH CHECK (
 
 ---
 
-## Backend Architecture Pattern
+## Backend Data Access
 
 The backend communicates with PostgreSQL using a clean layered architecture:
 ```text
-Route (routes/health.route.ts)
-  ↓
-Controller (controllers/health.controller.ts)
-  ↓
-Service (services/health.service.ts)
-  ↓
-Repository (repositories/health.repository.ts)
-  ↓
+Express route
+ ↓
+Service
+ ↓
+Repository
+ ↓
 PostgreSQL Pool (db/pool.ts)
 ```
 
-Health check verification is exposed at `GET /health` and returns:
+The backend exposes a database-backed liveness check at `GET /health`. Its response includes current database connectivity and latency; values such as timestamp and uptime are runtime-dependent.
 ```json
 {
   "status": "ok",

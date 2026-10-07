@@ -4,6 +4,8 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser, refreshCurrentUser } from '../../store/slices/authSlice';
 import { colors, spacing, typography } from '../../theme';
 import { Card, Badge, Button, AppIcon } from '../../components/common';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { showAlert } from '../../utils/alert';
 
 export default function VerificationPendingScreen() {
   const dispatch = useAppDispatch();
@@ -17,8 +19,11 @@ export default function VerificationPendingScreen() {
     setIsRefreshing(true);
     try {
       await dispatch(refreshCurrentUser()).unwrap();
-    } catch {
-      // Ignored
+    } catch (error) {
+      showAlert(
+        'Unable to check status',
+        getApiErrorMessage(error, 'Could not refresh your verification status. Please try again.')
+      );
     } finally {
       setIsRefreshing(false);
     }

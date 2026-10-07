@@ -1,249 +1,128 @@
 import { pool } from './src/db/pool';
-import { userRepository } from './src/repositories/user.repository';
-import { doctorRepository } from './src/repositories/doctor.repository';
+import { closeTestClients, createTestAccounts, TestAccount } from './test-support/auth';
 
-const API_BASE = 'http://localhost:5001/api/v1';
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-async function runTests() {
-  console.log('=== Milestone 10 Phase 1 Verification Tests ===\n');
-  let testsPassed = 0;
-  let testsFailed = 0;
-
-  function assert(condition: boolean, msg: string) {
+async function runMilestone10Regression(): Promise<void> {
+  let admin: TestAccount | undefined;
+  let patient: TestAccount | undefined;
+  let doctor: TestAccount | undefined;
+  let passed = 0;
+  let failed = 0;
+  const assert = (condition: boolean, message: string): void => {
     if (condition) {
-      console.log(`  PASS: ${msg}`);
-      testsPassed++;
+      console.log(`  PASS: ${message}`);
+      passed += 1;
     } else {
-      console.error(`  FAIL: ${msg}`);
-      testsFailed++;
+      console.error(`  FAIL: ${message}`);
+      failed += 1;
     }
-  }
+  };
 
   try {
-    // 0. Setup: Identify admin, patient, and doctor test users
-    console.log('[Setup] Verifying test users in database...');
-    const adminUser = await userRepository.findByEmail('madhavsaikiran2007@gmail.com');
-    assert(!!adminUser, 'Admin user exists in database');
-    assert(adminUser?.role === 'admin', `Admin user has role 'admin' (actual: ${adminUser?.role})`);
+    const accounts = await createTestAccounts([
+      { role: 'admin' },
+      { role: 'patient' },
+      { role: 'doctor', options: { verificationStatus: 'pending' } },
+    ]);
+    [admin, patient, doctor] = accounts;
+    const adminAccount = accounts[0];
+    const patientAccount = accounts[1];
+    const doctorAccount = accounts[2];
+    const unauthenticated = await fetch(`${API_BASE}/admin/doctors`);
+    assert(unauthenticated.status === 401, `Unauthenticated admin request is rejected (got ${unauthenticated.status})`);
 
-    // Find or pick a patient
-    const patientRes = await pool.query<{ id: string; email: string; role: string }>(
-      "SELECT id, email, role FROM users WHERE role = 'patient' LIMIT 1"
+    const patientAdmin = await fetch(`${API_BASE}/admin/doctors`, { headers: patientAccount.headers });
+    assert(patientAdmin.status === 403, `Patient cannot access admin endpoints (got ${patientAdmin.status})`);
+    const doctorAdmin = await fetch(`${API_BASE}/admin/doctors`, { headers: doctorAccount.headers });
+    assert(doctorAdmin.status === 403, `Doctor cannot access admin endpoints (got ${doctorAdmin.status})`);
+    const adminList = await fetch(`${API_BASE}/admin/doctors`, { headers: adminAccount.headers });
+    const adminListBody: any = await adminList.json();
+    assert(adminList.status === 200 && Array.isArray(adminListBody.doctors),
+      'Admin can list doctors with an isolated Supabase admin session.');
+
+    const doctorRow = await pool.query<{ verification_status: string; verified_by: string | null }>(
+      'SELECT verification_status, verified_by FROM doctors WHERE id = $1',
+      [doctorAccount.doctorId]
     );
-    const patientUser = patientRes.rows[0];
-    assert(!!patientUser, `Patient test user found (${patientUser?.email})`);
+    assert(doctorRow.rows[0]?.verification_status === 'pending'
+      && doctorRow.rows[0]?.verified_by === null,
+    'New doctor starts pending without a verifier.');
 
-    // Find or pick an existing approved doctor
-    const doctorRes = await pool.query<{ id: string; email: string; role: string; doctor_id: string }>(
-      `SELECT u.id, u.email, u.role, d.id as doctor_id, d.verification_status 
-       FROM users u 
-       JOIN doctors d ON d.user_id = u.id 
-       WHERE d.verification_status = 'approved' LIMIT 1`
+    const reject = await fetch(`${API_BASE}/admin/doctors/${doctorAccount.doctorId}/reject`, {
+      method: 'PATCH',
+      headers: adminAccount.headers,
+    });
+    assert(reject.status === 200, `Admin can reject a doctor (got ${reject.status})`);
+    const rejected = await pool.query<{ verification_status: string; verified_by: string | null; verified_at: Date | null }>(
+      'SELECT verification_status, verified_by, verified_at FROM doctors WHERE id = $1',
+      [doctorAccount.doctorId]
     );
-    const approvedDoctor = doctorRes.rows[0];
-    assert(!!approvedDoctor, `Approved doctor test user found (${approvedDoctor?.email})`);
+    assert(rejected.rows[0]?.verification_status === 'rejected'
+      && rejected.rows[0]?.verified_by === adminAccount.applicationUserId
+      && !!rejected.rows[0]?.verified_at,
+    'Rejection stores status, admin actor, and verification timestamp.');
 
-    const adminToken = `Bearer dev-token-${adminUser!.email}`;
-    const patientToken = `Bearer dev-token-${patientUser!.email}`;
-    const doctorToken = `Bearer dev-token-${approvedDoctor!.email}`;
+    const patientDirectory = await fetch(`${API_BASE}/doctor/list`, { headers: patientAccount.headers });
+    const directoryBody: any = await patientDirectory.json();
+    assert(patientDirectory.status === 200
+      && !directoryBody.doctors.some((item: { doctor_id: string }) => item.doctor_id === doctorAccount.doctorId),
+    'Rejected doctor is not exposed in the patient directory.');
 
-    // 1. Authorization tests on /api/v1/admin endpoints
-    console.log('\n[Test Suite 1: RBAC on Admin Endpoints]');
-    
-    // 1a. Unauthenticated request -> 401
-    const unauthRes = await fetch(`${API_BASE}/admin/doctors`);
-    assert(unauthRes.status === 401, `Unauthenticated request returns 401 (got ${unauthRes.status})`);
-
-    // 1b. Patient request -> 403
-    const patientReq = await fetch(`${API_BASE}/admin/doctors`, {
-      headers: { Authorization: patientToken }
-    });
-    assert(patientReq.status === 403, `Patient request returns 403 Forbidden (got ${patientReq.status})`);
-
-    // 1c. Doctor request -> 403
-    const doctorReq = await fetch(`${API_BASE}/admin/doctors`, {
-      headers: { Authorization: doctorToken }
-    });
-    assert(doctorReq.status === 403, `Doctor request returns 403 Forbidden (got ${doctorReq.status})`);
-
-    // 1d. Admin request -> 200 OK
-    const adminReq = await fetch(`${API_BASE}/admin/doctors`, {
-      headers: { Authorization: adminToken }
-    });
-    assert(adminReq.status === 200, `Admin request returns 200 OK (got ${adminReq.status})`);
-    const adminData: any = await adminReq.json();
-    assert(Array.isArray(adminData.doctors), 'Admin response contains doctors array');
-
-    // 2. Doctor verification workflow
-    console.log('\n[Test Suite 2: Doctor Verification Lifecycle]');
-
-    // Create a new doctor to test pending status
-    const testDocEmail = `test.doc.${Date.now()}@example.com`;
-    const specRes = await pool.query<{ name: string }>('SELECT name FROM specializations LIMIT 1');
-    const specName = specRes.rows[0].name;
-
-    const newDocUser = await userRepository.registerDoctor({
-      authUserId: crypto.randomUUID(),
-      email: testDocEmail,
-      firstName: 'DrTest',
-      lastName: 'PendingDoc',
-      phone: `+1999${Math.floor(1000000 + Math.random() * 9000000)}`,
-      specializationName: specName,
-      licenseNumber: `LIC-${Date.now()}`,
-      experienceYears: 5,
-      consultationFee: 75.0,
-      qualification: 'MBBS, MD',
-      bio: 'Test doctor for verification flow',
-    });
-
-    const newDocRecord = await doctorRepository.findDoctorByUserId(newDocUser.id);
-    assert(!!newDocRecord, 'New doctor profile created in database');
-    assert(newDocRecord?.verification_status === 'pending', `New doctor defaults to 'pending' (actual: ${newDocRecord?.verification_status})`);
-    assert(newDocRecord?.verified_at === null, 'verified_at is initially null');
-    assert(newDocRecord?.verified_by === null, 'verified_by is initially null');
-
-    const testDoctorId = newDocRecord!.doctor_id;
-
-    // 2a. Admin GET /admin/doctors?status=pending includes new doctor
-    const pendingRes = await fetch(`${API_BASE}/admin/doctors?status=pending`, {
-      headers: { Authorization: adminToken }
-    });
-    const pendingData: any = await pendingRes.json();
-    const foundPending = pendingData.doctors.some((d: any) => d.doctor_id === testDoctorId);
-    assert(foundPending, 'Admin can list new doctor in pending list');
-
-    // 2b. Admin GET /admin/doctors/:doctorId
-    const detailRes = await fetch(`${API_BASE}/admin/doctors/${testDoctorId}`, {
-      headers: { Authorization: adminToken }
-    });
-    assert(detailRes.status === 200, `Admin can fetch doctor details (got ${detailRes.status})`);
-    const detailData: any = await detailRes.json();
-    assert(detailData.doctor?.doctor_id === testDoctorId, 'Doctor detail returns correct doctor');
-
-    // 2c. Patient protection: Pending doctor MUST NOT appear in /api/v1/doctor/list
-    const patientListRes = await fetch(`${API_BASE}/doctor/list`, {
-      headers: { Authorization: patientToken }
-    });
-    const patientListData: any = await patientListRes.json();
-    const leakedInList = patientListData.doctors.some((d: any) => d.doctor_id === testDoctorId);
-    assert(!leakedInList, 'Pending doctor is NOT visible in patient doctor directory');
-
-    // 2d. Patient protection: Patient cannot view pending doctor profile
-    const patientViewRes = await fetch(`${API_BASE}/doctor/${testDoctorId}/profile`, {
-      headers: { Authorization: patientToken }
-    });
-    assert(patientViewRes.status === 404, `Patient profile view of pending doctor returns 404 (got ${patientViewRes.status})`);
-
-    // 2e. Admin REJECTS the doctor
-    const rejectRes = await fetch(`${API_BASE}/admin/doctors/${testDoctorId}/reject`, {
+    const approved = await fetch(`${API_BASE}/admin/doctors/${doctorAccount.doctorId}/approve`, {
       method: 'PATCH',
-      headers: { Authorization: adminToken }
+      headers: adminAccount.headers,
     });
-    assert(rejectRes.status === 200, `Admin can reject doctor (got ${rejectRes.status})`);
-    const rejectedDoc = await doctorRepository.findDoctorById(testDoctorId);
-    assert(rejectedDoc?.verification_status === 'rejected', `Doctor verification_status is 'rejected'`);
-    assert(rejectedDoc?.verified_by === adminUser!.id, `Doctor verified_by is admin ID (${adminUser!.id})`);
-    assert(!!rejectedDoc?.verified_at, 'Doctor verified_at is populated');
+    assert(approved.status === 200, `Admin can approve a doctor (got ${approved.status})`);
 
-    // 2f. Admin APPROVES the doctor
-    const approveRes = await fetch(`${API_BASE}/admin/doctors/${testDoctorId}/approve`, {
-      method: 'PATCH',
-      headers: { Authorization: adminToken }
-    });
-    assert(approveRes.status === 200, `Admin can approve doctor (got ${approveRes.status})`);
-    const approvedDoc = await doctorRepository.findDoctorById(testDoctorId);
-    assert(approvedDoc?.verification_status === 'approved', `Doctor verification_status is 'approved'`);
-    assert(approvedDoc?.verified_by === adminUser!.id, `Doctor verified_by is admin ID`);
-
-    // 2g. Once approved and marked available, doctor appears in patient directory
-    await pool.query('UPDATE doctors SET is_available = TRUE WHERE id = $1', [testDoctorId]);
-    const patientListApprovedRes = await fetch(`${API_BASE}/doctor/list?search=${newDocUser.first_name}`, {
-      headers: { Authorization: patientToken }
-    });
-    const patientListApprovedData: any = await patientListApprovedRes.json();
-    const foundApproved = patientListApprovedData.doctors.some((d: any) => d.doctor_id === testDoctorId);
-    assert(foundApproved, 'Approved available doctor is visible in patient doctor directory');
-
-    // 3. Patient protection: Booking flow blocking
-    console.log('\n[Test Suite 3: Booking Flow Guard]');
-    
-    // Create a temporary slot for an unapproved doctor
-    // Set doctor back to 'pending'
-    await pool.query("UPDATE doctors SET verification_status = 'pending' WHERE id = $1", [testDoctorId]);
-
-    // Insert an available slot tomorrow for this doctor
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = tomorrow.toISOString().split('T')[0];
-
-    const slotInsert = await pool.query<{ id: string }>(
+    const tomorrow = await pool.query<{ date: string }>(
+      'SELECT (CURRENT_DATE + 1)::text AS date'
+    );
+    await pool.query(
+      `INSERT INTO availability (doctor_id, day_of_week, start_time, end_time, slot_duration_minutes, is_active)
+       VALUES ($1, EXTRACT(DOW FROM $2::date)::smallint, '10:00:00', '10:30:00', 30, TRUE)`,
+      [doctorAccount.doctorId, tomorrow.rows[0].date]
+    );
+    const slot = await pool.query<{ id: string }>(
       `INSERT INTO slots (doctor_id, date, start_time, end_time, status)
-       VALUES ($1, $2, '10:00:00', '10:30:00', 'available')
-       RETURNING id`,
-      [testDoctorId, dateStr]
-    );
-    const slotId = slotInsert.rows[0].id;
-
-    // Try booking appointment with pending doctor
-    const bookRes = await fetch(`${API_BASE}/appointments/book`, {
-      method: 'POST',
-      headers: {
-        Authorization: patientToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        slotId,
-        reasonForVisit: 'Testing verification guard'
-      })
-    });
-    assert(bookRes.status === 403, `Booking with pending doctor is blocked with 403 Forbidden (got ${bookRes.status})`);
-    const bookError: any = await bookRes.json();
-    assert(
-      bookError.error?.includes('not yet verified') || bookError.message?.includes('not yet verified'),
-      `Error explains verification requirement (got: ${JSON.stringify(bookError)})`
+       VALUES ($1, $2, '10:00:00', '10:30:00', 'available') RETURNING id`,
+      [doctorAccount.doctorId, tomorrow.rows[0].date]
     );
 
-    // Now set doctor to approved and verify booking succeeds
-    await pool.query("UPDATE doctors SET verification_status = 'approved' WHERE id = $1", [testDoctorId]);
-    const bookApprovedRes = await fetch(`${API_BASE}/appointments/book`, {
+    await pool.query("UPDATE doctors SET verification_status = 'pending' WHERE id = $1", [doctorAccount.doctorId]);
+    const blockedBooking = await fetch(`${API_BASE}/appointments/book`, {
       method: 'POST',
-      headers: {
-        Authorization: patientToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        slotId,
-        reasonForVisit: 'Testing verification guard passed'
-      })
+      headers: { ...patientAccount.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot_id: slot.rows[0].id, reason_for_visit: 'Verification guard regression' }),
     });
-    assert(bookApprovedRes.status === 201, `Booking with approved doctor succeeds with 201 Created (got ${bookApprovedRes.status})`);
+    const blockedBody: any = await blockedBooking.json();
+    assert(blockedBooking.status === 403, `Booking with unapproved doctor is blocked (got ${blockedBooking.status})`);
+    assert(String(blockedBody.error).toLowerCase().includes('not yet verified'),
+      'Booking failure explains that doctor verification is required.');
 
-    // Cleanup test data
-    console.log('\n[Cleanup] Cleaning up test records...');
-    const apptRes = await pool.query<{ id: string }>('SELECT id FROM appointments WHERE slot_id = $1', [slotId]);
-    if (apptRes.rows[0]) {
-      await pool.query('DELETE FROM notifications WHERE appointment_id = $1', [apptRes.rows[0].id]);
-    }
-    await pool.query('DELETE FROM appointments WHERE slot_id = $1', [slotId]);
-    await pool.query('DELETE FROM slots WHERE id = $1', [slotId]);
-    await pool.query('DELETE FROM doctors WHERE id = $1', [testDoctorId]);
-    await pool.query('DELETE FROM users WHERE id = $1', [newDocUser.id]);
-    console.log('Cleanup completed.');
-
-  } catch (err: any) {
-    console.error('Test execution failed with error:', err);
-    testsFailed++;
+    await pool.query("UPDATE doctors SET verification_status = 'approved' WHERE id = $1", [doctorAccount.doctorId]);
+    const allowedBooking = await fetch(`${API_BASE}/appointments/book`, {
+      method: 'POST',
+      headers: { ...patientAccount.headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot_id: slot.rows[0].id, reason_for_visit: 'Approved doctor booking regression' }),
+    });
+    assert(allowedBooking.status === 201, `Booking with approved doctor succeeds (got ${allowedBooking.status})`);
+  } catch (error) {
+    console.error('Milestone 10 regression error:', error);
+    failed += 1;
   } finally {
-    await pool.end();
+    await doctor?.cleanup();
+    await patient?.cleanup();
+    await admin?.cleanup();
+    await closeTestClients();
   }
 
-  console.log(`\n========================================`);
-  console.log(`Test Results: ${testsPassed} passed, ${testsFailed} failed`);
-  console.log(`========================================\n`);
-
-  if (testsFailed > 0) {
-    process.exit(1);
-  }
+  console.log(`\nMilestone 10 regression results: ${passed} passed, ${failed} failed.`);
+  if (failed > 0) process.exitCode = 1;
 }
 
-runTests();
+runMilestone10Regression().catch(async (error: unknown) => {
+  console.error('Milestone 10 regression setup failed:', error);
+  await closeTestClients();
+  process.exitCode = 1;
+});

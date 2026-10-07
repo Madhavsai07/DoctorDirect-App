@@ -4,6 +4,7 @@ import { normalizeNotification } from '../../types/notification';
 import {
   fetchNotifications, fetchUnreadNotificationCount, markAllNotificationsReadApi, markNotificationReadApi,
 } from '../../services/notifications/notificationService';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface NotificationState {
   items: Notification[];
@@ -14,26 +15,24 @@ interface NotificationState {
 
 const initialState: NotificationState = { items: [], unreadCount: 0, isLoading: false, error: null };
 
-const message = (error: any, fallback: string) => error?.response?.data?.error || fallback;
-
 export const loadNotifications = createAsyncThunk('notification/load', async (_, { rejectWithValue }) => {
   try { return (await fetchNotifications()).data.notifications.map(normalizeNotification); }
-  catch (error: any) { return rejectWithValue(message(error, 'Unable to load notifications')); }
+  catch (error: any) { return rejectWithValue(getApiErrorMessage(error, 'Unable to load notifications. Please try again.')); }
 });
 
 export const loadUnreadNotificationCount = createAsyncThunk('notification/count', async (_, { rejectWithValue }) => {
   try { return (await fetchUnreadNotificationCount()).data.unreadCount; }
-  catch (error: any) { return rejectWithValue(message(error, 'Unable to load unread notification count')); }
+  catch (error: any) { return rejectWithValue(getApiErrorMessage(error, 'Unable to load unread notification count.')); }
 });
 
 export const markNotificationRead = createAsyncThunk('notification/read', async (id: string, { rejectWithValue }) => {
   try { return normalizeNotification((await markNotificationReadApi(id)).data.notification); }
-  catch (error: any) { return rejectWithValue(message(error, 'Unable to mark notification as read')); }
+  catch (error: any) { return rejectWithValue(getApiErrorMessage(error, 'Unable to update this notification. Please try again.')); }
 });
 
 export const markAllNotificationsRead = createAsyncThunk('notification/readAll', async (_, { rejectWithValue }) => {
   try { return (await markAllNotificationsReadApi()).data.updatedCount; }
-  catch (error: any) { return rejectWithValue(message(error, 'Unable to mark notifications as read')); }
+  catch (error: any) { return rejectWithValue(getApiErrorMessage(error, 'Unable to update notifications. Please try again.')); }
 });
 
 const notificationSlice = createSlice({

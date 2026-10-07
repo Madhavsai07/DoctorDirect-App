@@ -8,7 +8,6 @@ const doctorRouter = Router();
 // GET /api/v1/doctor/specializations — all specializations
 doctorRouter.get(
   '/specializations',
-  requireAuth,
   async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const data = await doctorService.getSpecializations();
@@ -23,6 +22,7 @@ doctorRouter.get(
 doctorRouter.get(
   '/list',
   requireAuth,
+  requireRole('patient'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctors = await doctorService.getDoctors({
@@ -259,13 +259,10 @@ doctorRouter.patch(
 doctorRouter.get(
   '/:doctorId/profile',
   requireAuth,
+  requireRole('patient'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const doctor = await doctorService.getDoctorById(req.params.doctorId);
-      if (req.user?.role === 'patient' && doctor.verification_status !== 'approved') {
-        res.status(404).json({ error: 'Doctor not found' });
-        return;
-      }
       res.json({ doctor });
     } catch (err) {
       next(err);
@@ -277,15 +274,10 @@ doctorRouter.get(
 doctorRouter.get(
   '/:doctorId/slots',
   requireAuth,
+  requireRole('patient'),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (req.user?.role === 'patient') {
-        const doctor = await doctorService.getDoctorById(req.params.doctorId);
-        if (doctor.verification_status !== 'approved') {
-          res.status(404).json({ error: 'Doctor not found' });
-          return;
-        }
-      }
+      await doctorService.getDoctorById(req.params.doctorId);
       const slots = await doctorService.getSlots(
         req.params.doctorId,
         req.query.from_date,

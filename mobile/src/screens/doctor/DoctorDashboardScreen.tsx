@@ -67,7 +67,7 @@ export default function DoctorDashboardScreen() {
             <View style={styles.actionTextCol}>
               <Text style={styles.actionTitle}>Availability & Slots</Text>
               <Text style={styles.actionSubtitle}>
-                Manage weekly working hours and 30-min booking slots
+                Manage weekly hours, date overrides, and booking slots
               </Text>
             </View>
             <AppIcon name="chevron" size={16} color={colors.text.muted} />

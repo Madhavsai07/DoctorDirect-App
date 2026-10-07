@@ -10,8 +10,6 @@ dotenv.config();
  * application never accesses process.env directly. This makes it easy
  * to add validation, defaults, or type coercion in one place.
  *
- * Values like DATABASE_URL, SUPABASE_URL, and GROQ_API_KEY are declared
- * here so future milestones can simply extend this object.
  */
 const config = {
   port: parseInt(process.env.PORT ?? '8000', 10),
@@ -25,8 +23,6 @@ const config = {
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
-  // ── Added in the AI Consultation milestone ────────────────────────────────
-  groqApiKey: process.env.GROQ_API_KEY,
 } as const;
 
 export default config;

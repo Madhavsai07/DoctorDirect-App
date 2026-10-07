@@ -1,5 +1,6 @@
 import {
   doctorRepository,
+  DbDoctorListing,
   UpsertAvailabilityDto,
   ScheduleWindowDto,
 } from '../repositories/doctor.repository';
@@ -121,6 +122,25 @@ function validateDateRange(from: unknown, to: unknown): { fromDate: string; toDa
 
 // ── Service methods ───────────────────────────────────────────────────────────
 
+function publicDoctorProfile(doctor: DbDoctorListing) {
+  return {
+    doctor_id: doctor.doctor_id,
+    first_name: doctor.first_name,
+    last_name: doctor.last_name,
+    avatar_url: doctor.avatar_url,
+    specialization_id: doctor.specialization_id,
+    specialization_name: doctor.specialization_name,
+    license_number: doctor.license_number,
+    experience_years: doctor.experience_years,
+    consultation_fee: doctor.consultation_fee,
+    bio: doctor.bio,
+    qualification: doctor.qualification,
+    is_available: doctor.is_available,
+    rating: doctor.rating,
+    verification_status: doctor.verification_status,
+  };
+}
+
 export const doctorService = {
 
   async getSpecializations() {
@@ -135,12 +155,13 @@ export const doctorService = {
   }) {
     const limit = Math.min(Number(query.limit) || 50, 100);
     const offset = Math.max(Number(query.offset) || 0, 0);
-    return doctorRepository.listDoctors({
+    const doctors = await doctorRepository.listDoctors({
       search: query.search,
       specializationId: query.specialization_id,
       limit,
       offset,
     });
+    return doctors.map(publicDoctorProfile);
   },
 
   async getDoctorById(doctorId: string) {
@@ -148,7 +169,10 @@ export const doctorService = {
     if (!doc) {
       throw Object.assign(new Error('Doctor not found'), { status: 404 });
     }
-    return doc;
+    if (!doc.is_active || doc.verification_status !== 'approved') {
+      throw Object.assign(new Error('Doctor not found'), { status: 404 });
+    }
+    return publicDoctorProfile(doc);
   },
 
   /** Resolve the authenticated doctor's own profile record. */
@@ -231,7 +255,17 @@ export const doctorService = {
     if (!isBlocked && windows.length === 0) {
       throw Object.assign(new Error('Add at least one custom time window or block the date.'), { status: 422 });
     }
-    await doctorRepository.saveScheduleOverride(doctorId, date, isBlocked, windows);
+    const expectedBookedCount = value.expected_booked_count;
+    if (isBlocked && (!Number.isInteger(expectedBookedCount) || Number(expectedBookedCount) < 0)) {
+      throw Object.assign(new Error('expected_booked_count is required when blocking a date.'), { status: 422 });
+    }
+    await doctorRepository.saveScheduleOverride(
+      doctorId,
+      date,
+      isBlocked,
+      windows,
+      isBlocked ? Number(expectedBookedCount) : undefined
+    );
   },
 
   async deleteScheduleOverride(doctorId: string, rawDate: unknown) {
@@ -254,6 +288,11 @@ export const doctorService = {
     }
     const startTime = value.start_time;
     const endTime = value.end_time;
+    const expectedBookedCount = value.expected_booked_count;
+    if (action === 'block' &&
+        (!Number.isInteger(expectedBookedCount) || Number(expectedBookedCount) < 0)) {
+      throw Object.assign(new Error('expected_booked_count is required when blocking a slot.'), { status: 422 });
+    }
     if (action === 'edit' &&
         (!isValidTime(startTime) || !isValidTime(endTime) ||
          timeToSeconds(endTime) <= timeToSeconds(startTime))) {
@@ -264,7 +303,8 @@ export const doctorService = {
       slotId,
       action,
       typeof startTime === 'string' ? startTime : undefined,
-      typeof endTime === 'string' ? endTime : undefined
+      typeof endTime === 'string' ? endTime : undefined,
+      action === 'block' ? Number(expectedBookedCount) : undefined
     );
     if (!updated) {
       throw Object.assign(new Error('Slot not found for this doctor'), { status: 404 });

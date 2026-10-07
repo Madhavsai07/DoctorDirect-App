@@ -11,6 +11,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   ScreenHeader,
   Card,
@@ -26,6 +27,7 @@ export default function AdminProfileScreen() {
 
   const [fullProfile, setFullProfile] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const fetchProfile = async () => {
     try {
@@ -33,8 +35,9 @@ export default function AdminProfileScreen() {
       if (res.data?.user) {
         setFullProfile(res.data.user);
       }
-    } catch {
-      // Silently use auth user state
+      setProfileError(null);
+    } catch (error) {
+      setProfileError(getApiErrorMessage(error, 'Unable to refresh your profile. Showing the last available account details.'));
     }
   };
 
@@ -104,6 +107,12 @@ export default function AdminProfileScreen() {
         badgeLabel="Administrator"
         badgeVariant="primary"
       />
+      {profileError && (
+        <View style={styles.errorNotice}>
+          <Text style={styles.errorNoticeText}>{profileError}</Text>
+          <Button title="Retry" onPress={fetchProfile} variant="outline" size="sm" />
+        </View>
+      )}
 
       {/* Identity Card */}
       <Card variant="elevated" padding="lg" style={styles.identityCard}>
@@ -148,7 +157,7 @@ export default function AdminProfileScreen() {
           <Text style={styles.infoLabel}>Account Status</Text>
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: colors.status.success }]} />
-            <Text style={styles.infoValue}>Active & Verified</Text>
+            <Text style={styles.infoValue}>{isActive ? 'Active' : 'Inactive'}</Text>
           </View>
         </View>
 
@@ -199,6 +208,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xxl * 2,
     gap: spacing.md,
+  },
+  errorNotice: {
+    padding: spacing.md,
+    borderRadius: 10,
+    backgroundColor: colors.status.errorBg,
+    gap: spacing.sm,
+  },
+  errorNoticeText: {
+    color: colors.status.errorText,
+    fontSize: typography.sizes.sm,
   },
   identityCard: {
     alignItems: 'center',

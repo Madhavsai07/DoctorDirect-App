@@ -32,13 +32,7 @@ function createApp(): Application {
   app.use('/api/v1/notifications', notificationRouter);
   app.use('/api/v1/admin', adminRouter);
 
-  // Future routes (added in later milestones):
-  // app.use('/api/v1/auth', authRouter);
-  // app.use('/api/v1/doctors', doctorRouter);
-  // app.use('/api/v1/appointments', appointmentRouter);
-  // app.use('/api/v1/consultations', consultationRouter);
   app.use('/api/v1/prescriptions', prescriptionRouter);
-  // app.use('/api/v1/sync', syncRouter);
 
   // ── 404 handler ──────────────────────────────────────────────────────────
   app.use((_req: Request, res: Response): void => {

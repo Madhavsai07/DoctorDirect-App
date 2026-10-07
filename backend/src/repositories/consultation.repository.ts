@@ -230,47 +230,62 @@ export class ConsultationRepository {
     doctorId: string,
     dto: UpdateConsultationDto
   ): Promise<DbConsultationDetail> {
-    const existing = await this.findConsultationById(consultationId);
-    if (!existing) {
-      const err: any = new Error('Consultation not found');
-      err.status = 404;
-      throw err;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const existing = await client.query<{
+        doctor_id: string;
+        status: string;
+        appointment_status: string;
+      }>(
+        `SELECT a.doctor_id, c.status, a.status AS appointment_status
+         FROM consultations c
+         JOIN appointments a ON a.id = c.appointment_id
+         WHERE c.id = $1
+         FOR UPDATE OF c`,
+        [consultationId]
+      );
+      const consultation = existing.rows[0];
+      if (!consultation) {
+        throw Object.assign(new Error('Consultation not found'), { status: 404 });
+      }
+      if (consultation.doctor_id !== doctorId) {
+        throw Object.assign(new Error('Forbidden: You can only update your own consultations'), { status: 403 });
+      }
+      if (consultation.status === 'completed') {
+        throw Object.assign(new Error('Cannot modify a finalized/completed consultation'), { status: 400 });
+      }
+      if (consultation.status !== 'in_progress' || consultation.appointment_status !== 'in_progress') {
+        throw Object.assign(new Error('Only an in-progress consultation can be edited.'), { status: 409 });
+      }
+
+      await client.query(
+        `UPDATE consultations
+         SET symptoms = COALESCE($1, symptoms),
+             clinical_notes = COALESCE($2, clinical_notes),
+             diagnosis = COALESCE($3, diagnosis),
+             treatment_plan = COALESCE($4, treatment_plan),
+             follow_up_instructions = COALESCE($5, follow_up_instructions),
+             prescription = COALESCE($6, prescription),
+             updated_at = NOW()
+         WHERE id = $7`,
+        [
+          dto.symptoms ?? null,
+          dto.clinical_notes ?? null,
+          dto.diagnosis ?? null,
+          dto.treatment_plan ?? null,
+          dto.follow_up_instructions ?? null,
+          dto.prescription ?? null,
+          consultationId,
+        ]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-
-    if (existing.doctor_id !== doctorId) {
-      const err: any = new Error('Forbidden: You can only update your own consultations');
-      err.status = 403;
-      throw err;
-    }
-
-    if (existing.status === 'completed') {
-      const err: any = new Error('Cannot modify a finalized/completed consultation');
-      err.status = 400;
-      throw err;
-    }
-
-    const query = `
-      UPDATE consultations
-      SET
-        symptoms = COALESCE($1, symptoms),
-        clinical_notes = COALESCE($2, clinical_notes),
-        diagnosis = COALESCE($3, diagnosis),
-        treatment_plan = COALESCE($4, treatment_plan),
-        follow_up_instructions = COALESCE($5, follow_up_instructions),
-        prescription = COALESCE($6, prescription),
-        updated_at = NOW()
-      WHERE id = $7
-    `;
-
-    await pool.query(query, [
-      dto.symptoms ?? null,
-      dto.clinical_notes ?? null,
-      dto.diagnosis ?? null,
-      dto.treatment_plan ?? null,
-      dto.follow_up_instructions ?? null,
-      dto.prescription ?? null,
-      consultationId,
-    ]);
 
     const updated = await this.findConsultationById(consultationId);
     return updated!;
@@ -294,9 +309,11 @@ export class ConsultationRepository {
         appointment_id: string;
         doctor_id: string;
         status: string;
+        appointment_status: string;
         patient_user_id: string;
       }>(
-        `SELECT c.id, c.appointment_id, a.doctor_id, c.status, pat_u.id AS patient_user_id
+        `SELECT c.id, c.appointment_id, a.doctor_id, c.status,
+                a.status AS appointment_status, pat_u.id AS patient_user_id
          FROM consultations c
          JOIN appointments a ON c.appointment_id = a.id
          JOIN patients p ON a.patient_id = p.id
@@ -323,6 +340,11 @@ export class ConsultationRepository {
       if (existing.status === 'completed') {
         const err: any = new Error('Consultation is already completed');
         err.status = 400;
+        throw err;
+      }
+      if (existing.status !== 'in_progress' || existing.appointment_status !== 'in_progress') {
+        const err: any = new Error('Only an in-progress consultation can be completed.');
+        err.status = 409;
         throw err;
       }
 

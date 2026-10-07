@@ -1,148 +1,85 @@
 import { pool } from './src/db/pool';
-import { userRepository } from './src/repositories/user.repository';
-import crypto from 'crypto';
+import { closeTestClients, createTestAccounts, TestAccount } from './test-support/auth';
 
-const API_BASE = 'http://localhost:5001/api/v1';
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-async function runCompleteVerificationFlowTest() {
-  console.log('=== Complete Doctor Registration & Verification Access Test ===\n');
-
+async function runCompleteVerificationFlowTest(): Promise<void> {
+  let admin: TestAccount | undefined;
+  let doctor: TestAccount | undefined;
   let passed = 0;
   let failed = 0;
-
-  function assert(cond: boolean, msg: string) {
-    if (cond) {
-      console.log(`  PASS: ${msg}`);
-      passed++;
+  const assert = (condition: boolean, message: string): void => {
+    if (condition) {
+      console.log(`  PASS: ${message}`);
+      passed += 1;
     } else {
-      console.error(`  FAIL: ${msg}`);
-      failed++;
+      console.error(`  FAIL: ${message}`);
+      failed += 1;
     }
-  }
-
-  const adminToken = 'Bearer dev-token-madhavsaikiran2007@gmail.com';
+  };
 
   try {
-    // 1. Get a specialization name
-    const specRes = await pool.query<{ name: string }>('SELECT name FROM specializations LIMIT 1');
-    const specName = specRes.rows[0].name;
+    const accounts = await createTestAccounts([
+      { role: 'admin' },
+      { role: 'doctor', options: { verificationStatus: 'pending' } },
+    ]);
+    [admin, doctor] = accounts;
+    const adminAccount = accounts[0];
+    const doctorAccount = accounts[1];
+    const me = await fetch(`${API_BASE}/auth/me`, { headers: doctorAccount.headers });
+    const meData: any = await me.json();
+    assert(me.status === 200, `Pending doctor /auth/me returns 200 (got ${me.status})`);
+    assert(meData.profile?.verification_status === 'pending', 'Profile reports pending verification.');
 
-    // 2. Register a new doctor
-    const testEmail = `dr.test.${Date.now()}@example.com`;
-    console.log(`[Step 1] Registering test doctor: ${testEmail}...`);
-    const docUser = await userRepository.registerDoctor({
-      authUserId: crypto.randomUUID(),
-      email: testEmail,
-      firstName: 'Alan',
-      lastName: 'Turing',
-      phone: `+1999${Math.floor(1000000 + Math.random() * 9000000)}`,
-      specializationName: specName,
-      licenseNumber: `LIC-${Date.now()}`,
-      experienceYears: 12,
-      consultationFee: 150.0,
-      qualification: 'MD, PhD',
-      bio: 'Research and clinical specialist.',
-    });
+    for (const endpoint of ['/doctor/me/availability', '/appointments/doctor']) {
+      const response = await fetch(`${API_BASE}${endpoint}`, { headers: doctorAccount.headers });
+      const body: any = await response.json();
+      assert(response.status === 403, `${endpoint} blocks pending doctor (got ${response.status})`);
+      assert(body.code === 'DOCTOR_NOT_VERIFIED', `${endpoint} reports DOCTOR_NOT_VERIFIED.`);
+    }
 
-    const docDoctorRes = await pool.query<{ id: string; verification_status: string }>(
-      'SELECT id, verification_status FROM doctors WHERE user_id = $1',
-      [docUser.id]
-    );
-    const doctorId = docDoctorRes.rows[0].id;
-    assert(docDoctorRes.rows[0].verification_status === 'pending', 'Doctor verification_status is pending upon registration');
+    const pending = await fetch(`${API_BASE}/admin/doctors?status=pending`, { headers: adminAccount.headers });
+    const pendingData: any = await pending.json();
+    assert(pending.status === 200, `Admin pending list returns 200 (got ${pending.status})`);
+    assert(pendingData.doctors.some((item: { doctor_id: string }) => item.doctor_id === doctorAccount.doctorId),
+      'Pending doctor is visible in the isolated admin queue.');
 
-    const doctorToken = `Bearer dev-token-${testEmail}`;
-
-    // 3. Test /auth/me for pending doctor
-    console.log('\n[Step 2] Testing /auth/me endpoint for pending doctor...');
-    const meRes = await fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: doctorToken },
-    });
-    const meData: any = await meRes.json();
-    assert(meRes.status === 200, `/auth/me responds 200 (got ${meRes.status})`);
-    assert(meData.profile?.verification_status === 'pending', `Profile verification_status is 'pending' (got ${meData.profile?.verification_status})`);
-
-    // 4. Test protected operational doctor routes for pending doctor (must return 403 DOCTOR_NOT_VERIFIED)
-    console.log('\n[Step 3] Testing backend guard against pending doctor...');
-    const availRes = await fetch(`${API_BASE}/doctor/me/availability`, {
-      headers: { Authorization: doctorToken },
-    });
-    const availData: any = await availRes.json();
-    assert(availRes.status === 403, `Availability route returns 403 for pending doctor (got ${availRes.status})`);
-    assert(availData.code === 'DOCTOR_NOT_VERIFIED', `Response code is DOCTOR_NOT_VERIFIED (got ${availData.code})`);
-
-    const apptRes = await fetch(`${API_BASE}/appointments/doctor`, {
-      headers: { Authorization: doctorToken },
-    });
-    const apptData: any = await apptRes.json();
-    assert(apptRes.status === 403, `Appointment route returns 403 for pending doctor (got ${apptRes.status})`);
-    assert(apptData.code === 'DOCTOR_NOT_VERIFIED', `Response code is DOCTOR_NOT_VERIFIED (got ${apptData.code})`);
-
-    // 5. Check Admin pending queue
-    console.log('\n[Step 4] Checking Admin Pending Queue...');
-    const adminPendingRes = await fetch(`${API_BASE}/admin/doctors?status=pending`, {
-      headers: { Authorization: adminToken },
-    });
-    const adminPendingData: any = await adminPendingRes.json();
-    const isDocPending = adminPendingData.doctors.some((d: any) => d.doctor_id === doctorId);
-    assert(isDocPending, 'Pending doctor is visible in Admin pending list');
-
-    // 6. Admin rejects doctor
-    console.log('\n[Step 5] Admin rejects doctor...');
-    const rejectRes = await fetch(`${API_BASE}/admin/doctors/${doctorId}/reject`, {
+    const reject = await fetch(`${API_BASE}/admin/doctors/${doctorAccount.doctorId}/reject`, {
       method: 'PATCH',
-      headers: { Authorization: adminToken },
+      headers: adminAccount.headers,
     });
-    assert(rejectRes.status === 200, `Admin reject endpoint returned 200 (got ${rejectRes.status})`);
+    assert(reject.status === 200, `Admin rejects doctor (got ${reject.status})`);
 
-    // 7. Verify rejected doctor still blocked
-    console.log('\n[Step 6] Testing backend guard against rejected doctor...');
-    const availRejectRes = await fetch(`${API_BASE}/doctor/me/availability`, {
-      headers: { Authorization: doctorToken },
-    });
-    const availRejectData: any = await availRejectRes.json();
-    assert(availRejectRes.status === 403, `Availability route returns 403 for rejected doctor (got ${availRejectRes.status})`);
-    assert(availRejectData.code === 'DOCTOR_NOT_VERIFIED', `Response code is DOCTOR_NOT_VERIFIED (got ${availRejectData.code})`);
+    const rejectedAvailability = await fetch(`${API_BASE}/doctor/me/availability`, { headers: doctorAccount.headers });
+    const rejectedBody: any = await rejectedAvailability.json();
+    assert(rejectedAvailability.status === 403 && rejectedBody.code === 'DOCTOR_NOT_VERIFIED',
+      'Rejected doctor remains blocked from availability.');
 
-    // 8. Admin approves doctor
-    console.log('\n[Step 7] Admin approves doctor...');
-    const approveRes = await fetch(`${API_BASE}/admin/doctors/${doctorId}/approve`, {
+    const approve = await fetch(`${API_BASE}/admin/doctors/${doctorAccount.doctorId}/approve`, {
       method: 'PATCH',
-      headers: { Authorization: adminToken },
+      headers: adminAccount.headers,
     });
-    assert(approveRes.status === 200, `Admin approve endpoint returned 200 (got ${approveRes.status})`);
+    assert(approve.status === 200, `Admin approves doctor (got ${approve.status})`);
 
-    // 9. Approved doctor now accesses protected operational routes
-    console.log('\n[Step 8] Testing approved doctor access...');
-    const availApproveRes = await fetch(`${API_BASE}/doctor/me/availability`, {
-      headers: { Authorization: doctorToken },
-    });
-    assert(availApproveRes.status === 200, `Availability route returns 200 for approved doctor (got ${availApproveRes.status})`);
-
-    const apptApproveRes = await fetch(`${API_BASE}/appointments/doctor`, {
-      headers: { Authorization: doctorToken },
-    });
-    assert(apptApproveRes.status === 200, `Appointment route returns 200 for approved doctor (got ${apptApproveRes.status})`);
-
-    // 10. Clean up test record
-    console.log('\n[Step 9] Cleaning up test records...');
-    await pool.query('DELETE FROM notifications WHERE doctor_id = $1', [doctorId]);
-    await pool.query('DELETE FROM doctors WHERE id = $1', [doctorId]);
-    await pool.query('DELETE FROM users WHERE id = $1', [docUser.id]);
-    console.log('Cleanup completed.');
-
-  } catch (err) {
-    console.error('Test execution failed:', err);
-    failed++;
+    for (const endpoint of ['/doctor/me/availability', '/appointments/doctor']) {
+      const response = await fetch(`${API_BASE}${endpoint}`, { headers: doctorAccount.headers });
+      assert(response.status === 200, `Approved doctor can access ${endpoint} (got ${response.status})`);
+    }
+  } catch (error) {
+    console.error('Doctor verification flow error:', error);
+    failed += 1;
   } finally {
-    await pool.end();
+    await doctor?.cleanup();
+    await admin?.cleanup();
+    await closeTestClients();
   }
 
-  console.log(`\n========================================`);
-  console.log(`Results: ${passed} passed, ${failed} failed`);
-  console.log(`========================================\n`);
-
-  if (failed > 0) process.exit(1);
+  console.log(`\nDoctor verification integration results: ${passed} passed, ${failed} failed.`);
+  if (failed > 0) process.exitCode = 1;
 }
 
-runCompleteVerificationFlowTest();
+runCompleteVerificationFlowTest().catch(async (error: unknown) => {
+  console.error('Doctor verification setup failed:', error);
+  await closeTestClients();
+  process.exitCode = 1;
+});

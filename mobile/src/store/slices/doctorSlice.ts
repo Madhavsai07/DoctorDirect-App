@@ -8,13 +8,13 @@ import {
   addAvailabilityWindow,
   updateAvailabilityWindow,
   removeAvailabilityWindow,
-  fetchMySlots,
   generateMySlots,
   fetchMyScheduleOverrides,
   saveMyScheduleOverride,
   deleteMyScheduleOverride,
   updateMySlot,
 } from '../../services/doctors/doctorService';
+import { getApiErrorMessage } from '../../utils/apiError';
 import {
   Doctor,
   Specialization,
@@ -81,7 +81,7 @@ export const loadSpecializations = createAsyncThunk(
         icon: s.icon,
       })) as Specialization[];
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load specializations');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to load specializations. Please try again.'));
     }
   }
 );
@@ -96,7 +96,7 @@ export const loadDoctors = createAsyncThunk(
       const data = await fetchDoctors(params);
       return data.doctors.map(normalizeDoctor);
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load doctors');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to load doctors. Please try again.'));
     }
   }
 );
@@ -108,7 +108,7 @@ export const loadDoctorProfile = createAsyncThunk(
       const data = await fetchDoctorProfile(doctorId);
       return normalizeDoctor(data.doctor);
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load doctor profile');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to load this doctor profile. Please try again.'));
     }
   }
 );
@@ -123,7 +123,7 @@ export const loadDoctorSlots = createAsyncThunk(
       const data = await fetchDoctorSlots(doctorId, fromDate, toDate);
       return data.slots.map(normalizeSlot);
     } catch (error: unknown) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load slots');
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to load availability. Please try again.'));
     }
   }
 );
@@ -137,7 +137,7 @@ export const loadMyAvailability = createAsyncThunk(
       const data = await fetchMyAvailability();
       return data.availability.map(normalizeAvailability);
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to load availability');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to load your availability. Please try again.'));
     }
   }
 );
@@ -152,7 +152,7 @@ export const addAvailability = createAsyncThunk(
       const data = await addAvailabilityWindow(dto);
       return normalizeAvailability(data.availability as unknown as Parameters<typeof normalizeAvailability>[0]);
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to add availability');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to add availability. Please try again.'));
     }
   }
 );
@@ -167,7 +167,7 @@ export const updateAvailability = createAsyncThunk(
       const data = await updateAvailabilityWindow(id, dto);
       return normalizeAvailability(data.availability as unknown as Parameters<typeof normalizeAvailability>[0]);
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to update availability');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to update availability. Please try again.'));
     }
   }
 );
@@ -179,7 +179,7 @@ export const removeAvailability = createAsyncThunk(
       await removeAvailabilityWindow(availabilityId);
       return availabilityId;
     } catch (e: unknown) {
-      return rejectWithValue(e instanceof Error ? e.message : 'Failed to remove availability');
+      return rejectWithValue(getApiErrorMessage(e, 'Unable to remove availability. Please try again.'));
     }
   }
 );
@@ -190,13 +190,8 @@ export const loadMySlots = createAsyncThunk(
     try {
       const data = await generateMySlots(fromDate, toDate);
       return data.slots.map(normalizeSlot);
-    } catch {
-      try {
-        const data = await fetchMySlots(fromDate, toDate);
-        return data.slots.map(normalizeSlot);
-      } catch (e2: unknown) {
-        return rejectWithValue(e2 instanceof Error ? e2.message : 'Failed to load my slots');
-      }
+    } catch (error: unknown) {
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to load your schedule. Please try again.'));
     }
   }
 );
@@ -207,7 +202,7 @@ export const loadMyScheduleOverrides = createAsyncThunk(
     try {
       return await fetchMyScheduleOverrides(fromDate, toDate);
     } catch (error: unknown) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load date overrides');
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to load date overrides. Please try again.'));
     }
   }
 );
@@ -215,14 +210,19 @@ export const loadMyScheduleOverrides = createAsyncThunk(
 export const saveScheduleOverride = createAsyncThunk(
   'doctor/saveScheduleOverride',
   async (
-    payload: { date: string; is_blocked: boolean; windows: Array<{ start_time: string; end_time: string; slot_duration_minutes: number }> },
+    payload: {
+      date: string;
+      is_blocked: boolean;
+      windows: Array<{ start_time: string; end_time: string; slot_duration_minutes: number }>;
+      expected_booked_count?: number;
+    },
     { rejectWithValue }
   ) => {
     try {
       await saveMyScheduleOverride(payload);
       return payload.date;
     } catch (error: unknown) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to save date override');
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to save this date override. Please try again.'));
     }
   }
 );
@@ -234,7 +234,7 @@ export const clearScheduleOverride = createAsyncThunk(
       await deleteMyScheduleOverride(date);
       return date;
     } catch (error: unknown) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to restore weekly schedule');
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to restore weekly hours. Please try again.'));
     }
   }
 );
@@ -242,13 +242,19 @@ export const clearScheduleOverride = createAsyncThunk(
 export const changeMySlot = createAsyncThunk(
   'doctor/changeMySlot',
   async (
-    payload: { slotId: string; action: 'edit' | 'block' | 'restore'; start_time?: string; end_time?: string },
+    payload: {
+      slotId: string;
+      action: 'edit' | 'block' | 'restore';
+      start_time?: string;
+      end_time?: string;
+      expected_booked_count?: number;
+    },
     { rejectWithValue }
   ) => {
     try {
       return normalizeSlot(await updateMySlot(payload));
     } catch (error: unknown) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to update slot');
+      return rejectWithValue(getApiErrorMessage(error, 'Unable to update this slot. Please try again.'));
     }
   }
 );

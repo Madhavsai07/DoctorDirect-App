@@ -1,116 +1,101 @@
 import { pool } from './src/db/pool';
+import { closeTestClients, createTestAccounts, TestAccount } from './test-support/auth';
 
-const API_BASE = 'http://localhost:5001/api/v1';
+const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:5001/api/v1';
 
-async function testAdminConsoleImprovements() {
-  console.log('=== Testing Admin Console Improvements ===\n');
+async function testAdminConsoleImprovements(): Promise<void> {
+  let admin: TestAccount | undefined;
+  let patient: TestAccount | undefined;
+  let notificationId: string | undefined;
   let passed = 0;
   let failed = 0;
-
-  function assert(cond: boolean, msg: string) {
-    if (cond) {
-      console.log(`  PASS: ${msg}`);
-      passed++;
+  const assert = (condition: boolean, message: string): void => {
+    if (condition) {
+      console.log(`  PASS: ${message}`);
+      passed += 1;
     } else {
-      console.error(`  FAIL: ${msg}`);
-      failed++;
+      console.error(`  FAIL: ${message}`);
+      failed += 1;
     }
-  }
-
-  const adminToken = 'Bearer dev-token-madhavsaikiran2007@gmail.com';
-  const patientToken = 'Bearer dev-token-dev.patient@doctordirect.com';
+  };
 
   try {
-    // 1. Test Admin Auth / Profile retrieval
-    console.log('[1] Testing Admin Profile API...');
-    const profileRes = await fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: adminToken },
-    });
-    assert(profileRes.status === 200, `Admin /auth/me returns 200 OK (got ${profileRes.status})`);
-    const profileData: any = await profileRes.json();
-    assert(profileData.user?.role === 'admin', `User role is 'admin' (got ${profileData.user?.role})`);
-    assert(
-      profileData.user?.email === 'madhavsaikiran2007@gmail.com',
-      `Admin email matches (got ${profileData.user?.email})`
-    );
+    const accounts = await createTestAccounts([
+      { role: 'admin' },
+      { role: 'patient' },
+    ]);
+    [admin, patient] = accounts;
+    const adminAccount = accounts[0];
+    const patientAccount = accounts[1];
+    const profileResponse = await fetch(`${API_BASE}/auth/me`, { headers: adminAccount.headers });
+    const profileBody: any = await profileResponse.json();
+    assert(profileResponse.status === 200, `Admin profile endpoint succeeds (got ${profileResponse.status})`);
+    assert(profileBody.user?.role === 'admin' && profileBody.user?.email === adminAccount.email,
+      'Admin profile uses the authenticated isolated admin account.');
 
-    // 2. Test Admin Notifications API (Scoped to Admin)
-    console.log('\n[2] Testing Admin Notifications API...');
-    const notifRes = await fetch(`${API_BASE}/notifications`, {
-      headers: { Authorization: adminToken },
-    });
-    assert(notifRes.status === 200, `Admin notifications list returns 200 OK (got ${notifRes.status})`);
-    const notifData: any = await notifRes.json();
-    assert(Array.isArray(notifData.notifications), 'Response has notifications array');
+    const listResponse = await fetch(`${API_BASE}/admin/doctors?status=pending`, { headers: adminAccount.headers });
+    const listBody: any = await listResponse.json();
+    assert(listResponse.status === 200 && Array.isArray(listBody.doctors),
+      'Admin can list the pending doctor queue.');
 
-    const countRes = await fetch(`${API_BASE}/notifications/unread-count`, {
-      headers: { Authorization: adminToken },
-    });
-    assert(countRes.status === 200, `Admin unread count returns 200 OK (got ${countRes.status})`);
-    const countData: any = await countRes.json();
-    assert(typeof countData.unreadCount === 'number', `Unread count is a number (got ${countData.unreadCount})`);
-
-    // 3. Test Notification Creation & Mark Read
-    console.log('\n[3] Testing Admin Notification lifecycle...');
-    const adminUserRes = await pool.query<{ id: string }>(
-      "SELECT id FROM users WHERE email = 'madhavsaikiran2007@gmail.com'"
-    );
-    const adminId = adminUserRes.rows[0].id;
-
-    // Insert a test notification for the admin
-    const insertNotif = await pool.query<{ id: string }>(
+    const notification = await pool.query<{ id: string }>(
       `INSERT INTO notifications (recipient_user_id, type, title, message, event_key, is_read)
-       VALUES ($1, 'system_alert', 'Doctor Verification Alert', 'Dr. New Applicant has submitted credentials for review.', $2, FALSE)
+       VALUES ($1, 'system_alert', 'Integration test', 'Isolated admin notification test.', $2, FALSE)
        RETURNING id`,
-      [adminId, `admin_alert_${Date.now()}`]
+      [adminAccount.applicationUserId, `test-admin-notification-${adminAccount.authUser.id}`]
     );
-    const testNotifId = insertNotif.rows[0].id;
+    notificationId = notification.rows[0].id;
 
-    const notifWithNewRes = await fetch(`${API_BASE}/notifications`, {
-      headers: { Authorization: adminToken },
-    });
-    const notifWithNewData: any = await notifWithNewRes.json();
-    const foundNotif = notifWithNewData.notifications.some((n: any) => n.id === testNotifId);
-    assert(foundNotif, 'Inserted notification is returned in admin notifications list');
+    const listNotifications = await fetch(`${API_BASE}/notifications`, { headers: adminAccount.headers });
+    const notificationsBody: any = await listNotifications.json();
+    assert(listNotifications.status === 200
+      && notificationsBody.notifications.some((item: { id: string }) => item.id === notificationId),
+    'Admin notification feed is scoped to and includes the test admin notification.');
 
-    // Mark single notification read
-    const markReadRes = await fetch(`${API_BASE}/notifications/${testNotifId}/read`, {
+    const unread = await fetch(`${API_BASE}/notifications/unread-count`, { headers: adminAccount.headers });
+    const unreadBody: any = await unread.json();
+    assert(unread.status === 200 && typeof unreadBody.unreadCount === 'number',
+      'Admin unread notification count is returned.');
+
+    const markRead = await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
       method: 'PATCH',
-      headers: { Authorization: adminToken },
+      headers: adminAccount.headers,
     });
-    assert(markReadRes.status === 200, `Mark notification read returns 200 (got ${markReadRes.status})`);
-    const markReadData: any = await markReadRes.json();
-    assert(markReadData.notification?.is_read === true, 'Notification is_read is now true');
+    const markReadBody: any = await markRead.json();
+    assert(markRead.status === 200 && markReadBody.notification?.is_read === true,
+      'Admin can mark their own notification as read.');
 
-    // Mark all read
-    const markAllRes = await fetch(`${API_BASE}/notifications/read-all`, {
+    const markAll = await fetch(`${API_BASE}/notifications/read-all`, {
       method: 'PATCH',
-      headers: { Authorization: adminToken },
+      headers: adminAccount.headers,
     });
-    assert(markAllRes.status === 200, `Mark all read returns 200 (got ${markAllRes.status})`);
+    assert(markAll.status === 200, `Admin can mark their notifications as read (got ${markAll.status})`);
 
-    // Clean up test notification
-    await pool.query('DELETE FROM notifications WHERE id = $1', [testNotifId]);
+    const patientAdmin = await fetch(`${API_BASE}/admin/doctors`, { headers: patientAccount.headers });
+    assert(patientAdmin.status === 403, `Patient cannot access admin routes (got ${patientAdmin.status})`);
 
-    // 4. Verify Non-Admin Access Restrictions
-    console.log('\n[4] Verifying patient cannot access admin endpoints...');
-    const patientAdminRes = await fetch(`${API_BASE}/admin/doctors`, {
-      headers: { Authorization: patientToken },
+    const wrongRecipient = await fetch(`${API_BASE}/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+      headers: patientAccount.headers,
     });
-    assert(patientAdminRes.status === 403, `Patient is blocked with 403 Forbidden on admin endpoints (got ${patientAdminRes.status})`);
-
-  } catch (err) {
-    console.error('Test error:', err);
-    failed++;
+    assert(wrongRecipient.status === 404 || wrongRecipient.status === 403,
+      `Patient cannot mark another account's notification as read (got ${wrongRecipient.status})`);
+  } catch (error) {
+    console.error('Admin console integration error:', error);
+    failed += 1;
   } finally {
-    await pool.end();
+    if (notificationId) await pool.query('DELETE FROM notifications WHERE id = $1', [notificationId]);
+    await patient?.cleanup();
+    await admin?.cleanup();
+    await closeTestClients();
   }
 
-  console.log(`\n========================================`);
-  console.log(`Results: ${passed} passed, ${failed} failed`);
-  console.log(`========================================\n`);
-
-  if (failed > 0) process.exit(1);
+  console.log(`\nAdmin console integration results: ${passed} passed, ${failed} failed.`);
+  if (failed > 0) process.exitCode = 1;
 }
 
-testAdminConsoleImprovements();
+testAdminConsoleImprovements().catch(async (error: unknown) => {
+  console.error('Admin console setup failed:', error);
+  await closeTestClients();
+  process.exitCode = 1;
+});

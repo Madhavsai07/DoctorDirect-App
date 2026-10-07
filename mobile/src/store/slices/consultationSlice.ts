@@ -14,6 +14,7 @@ import {
   startOrGetConsultationApi,
   updateConsultationDraftApi,
 } from '../../services/consultations/consultationService';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface ConsultationState {
   activeConsultation: Consultation | null;
@@ -42,7 +43,7 @@ export const startOrGetConsultation = createAsyncThunk(
       const res = await startOrGetConsultationApi(appointmentId);
       return normalizeConsultation(res.consultation as RawConsultation);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to start consultation');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to start the consultation. Please try again.'));
     }
   }
 );
@@ -54,7 +55,7 @@ export const loadConsultationByAppointment = createAsyncThunk(
       const res = await fetchConsultationByAppointmentApi(appointmentId);
       return normalizeConsultation(res.consultation as RawConsultation);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to load consultation');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load the consultation. Please try again.'));
     }
   }
 );
@@ -69,7 +70,7 @@ export const saveConsultationDraft = createAsyncThunk(
       const res = await updateConsultationDraftApi(payload.id, payload.data);
       return normalizeConsultation(res.consultation as RawConsultation);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to save draft');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to save the consultation draft. Please try again.'));
     }
   }
 );
@@ -84,7 +85,7 @@ export const completeConsultation = createAsyncThunk(
       const res = await completeConsultationApi(payload.id, payload.data);
       return normalizeConsultation(res.consultation as RawConsultation);
     } catch (err: any) {
-      return rejectWithValue(err?.response?.data?.error || 'Failed to complete consultation');
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to complete the consultation. Please try again.'));
     }
   }
 );

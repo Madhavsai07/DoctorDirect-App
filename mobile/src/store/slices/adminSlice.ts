@@ -5,6 +5,7 @@ import {
   VerificationStatus,
   StatusCounts,
 } from '../../services/admin/adminService';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 export interface AdminState {
   doctors: AdminDoctor[];
@@ -56,8 +57,7 @@ export const fetchAdminDoctors = createAsyncThunk(
         counts: countsResult,
       };
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Failed to fetch doctors';
-      return rejectWithValue(message);
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load the doctor list. Please try again.'));
     }
   }
 );
@@ -69,8 +69,7 @@ export const fetchDoctorDetail = createAsyncThunk(
       const doctor = await adminService.getDoctorDetail(doctorId);
       return doctor;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Failed to fetch doctor detail';
-      return rejectWithValue(message);
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load doctor details. Please try again.'));
     }
   }
 );
@@ -90,8 +89,7 @@ export const approveDoctorAction = createAsyncThunk(
       );
       return res;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Failed to approve doctor';
-      return rejectWithValue(message);
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to approve this doctor. Please try again.'));
     }
   }
 );
@@ -111,8 +109,7 @@ export const rejectDoctorAction = createAsyncThunk(
       );
       return res;
     } catch (err: any) {
-      const message = err.response?.data?.error || err.message || 'Failed to reject doctor';
-      return rejectWithValue(message);
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to reject this doctor. Please try again.'));
     }
   }
 );

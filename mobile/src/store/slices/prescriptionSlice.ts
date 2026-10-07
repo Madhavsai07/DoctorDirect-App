@@ -17,6 +17,7 @@ import {
   finalizePrescriptionApi,
   updatePrescriptionDraftApi,
 } from '../../services/prescription/prescriptionService';
+import { getApiErrorMessage } from '../../utils/apiError';
 
 interface PrescriptionState {
   activePrescription: Prescription | null;
@@ -47,9 +48,7 @@ export const createPrescription = createAsyncThunk(
       const res = await createPrescriptionApi(payload);
       return normalizePrescription(res.prescription);
     } catch (err: any) {
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to create prescription draft'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to create the prescription draft. Please try again.'));
     }
   }
 );
@@ -68,9 +67,7 @@ export const loadPrescriptionByConsultation = createAsyncThunk(
       if (err?.response?.status === 404) {
         return null;
       }
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to load prescription'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load the prescription. Please try again.'));
     }
   }
 );
@@ -82,9 +79,7 @@ export const loadPrescriptionById = createAsyncThunk(
       const res = await fetchPrescriptionByIdApi(id);
       return normalizePrescription(res.prescription);
     } catch (err: any) {
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to load prescription'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load the prescription. Please try again.'));
     }
   }
 );
@@ -99,9 +94,7 @@ export const savePrescriptionDraft = createAsyncThunk(
       const res = await updatePrescriptionDraftApi(payload.id, payload.data);
       return normalizePrescription(res.prescription);
     } catch (err: any) {
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to update prescription draft'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to update the prescription draft. Please try again.'));
     }
   }
 );
@@ -113,9 +106,7 @@ export const finalizePrescription = createAsyncThunk(
       const res = await finalizePrescriptionApi(id);
       return normalizePrescription(res.prescription);
     } catch (err: any) {
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to finalize prescription'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to finalize the prescription. Please try again.'));
     }
   }
 );
@@ -129,9 +120,7 @@ export const loadPatientPrescriptions = createAsyncThunk(
         normalizePrescription(p)
       );
     } catch (err: any) {
-      return rejectWithValue(
-        err?.response?.data?.error || 'Failed to load prescription history'
-      );
+      return rejectWithValue(getApiErrorMessage(err, 'Unable to load prescription history. Please try again.'));
     }
   }
 );
