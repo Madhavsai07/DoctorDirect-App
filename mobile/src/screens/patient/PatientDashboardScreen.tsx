@@ -48,8 +48,12 @@ export default function PatientDashboardScreen() {
           <Text style={styles.badgeText}>PATIENT PORTAL</Text>
         </View>
         <Text style={styles.welcomeText}>Welcome back,</Text>
-        <Text style={styles.nameText}>{user?.firstName} {user?.lastName}</Text>
-        <Text style={styles.emailText}>{user?.email}</Text>
+        <Text style={styles.nameText} numberOfLines={1} ellipsizeMode="tail">
+          {user?.firstName} {user?.lastName}
+        </Text>
+        <Text style={styles.emailText} numberOfLines={1} ellipsizeMode="tail">
+          {user?.email}
+        </Text>
       </View>
 
       {/* Backend RBAC Verification Card */}

@@ -149,13 +149,17 @@ export default function AdminDashboardScreen() {
     >
       {/* Top Header with Portal Branding & Sign Out */}
       <View style={styles.topBar}>
-        <View>
+        <View style={styles.headerTextCol}>
           <View style={styles.portalBadge}>
             <View style={styles.portalDot} />
             <Text style={styles.portalBadgeText}>ADMIN CONSOLE</Text>
           </View>
-          <Text style={styles.headerTitle}>Doctor Credentialing</Text>
-          <Text style={styles.headerSubtitle}>{user?.email}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+            Doctor Credentialing
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1} ellipsizeMode="tail">
+            {user?.email}
+          </Text>
         </View>
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
@@ -328,13 +332,13 @@ export default function AdminDashboardScreen() {
 
                   <View style={styles.doctorInfoCol}>
                     <View style={styles.nameRow}>
-                      <Text style={styles.doctorName}>
+                      <Text style={styles.doctorName} numberOfLines={1} ellipsizeMode="tail">
                         Dr. {doctor.first_name} {doctor.last_name}
                       </Text>
                       {getStatusBadge(doctor.verification_status)}
                     </View>
 
-                    <Text style={styles.doctorSpecialization}>
+                    <Text style={styles.doctorSpecialization} numberOfLines={1} ellipsizeMode="tail">
                       {doctor.specialization_name} • {doctor.experience_years} yrs exp
                     </Text>
                   </View>
@@ -344,16 +348,18 @@ export default function AdminDashboardScreen() {
                 <View style={styles.doctorDetailsRow}>
                   <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>License:</Text>
-                    <Text style={styles.detailValue}>{doctor.license_number}</Text>
+                    <Text style={styles.detailValue} numberOfLines={1} ellipsizeMode="tail">
+                      {doctor.license_number}
+                    </Text>
                   </View>
                   <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Fee:</Text>
                     <Text style={styles.detailValue}>${doctor.consultation_fee}</Text>
                   </View>
                   {doctor.email && (
-                    <View style={styles.detailItem}>
+                    <View style={[styles.detailItem, styles.detailItemEmail]}>
                       <Text style={styles.detailLabel}>Email:</Text>
-                      <Text style={styles.detailValue} numberOfLines={1}>
+                      <Text style={styles.detailValue} numberOfLines={1} ellipsizeMode="tail">
                         {doctor.email}
                       </Text>
                     </View>
@@ -433,6 +439,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     paddingTop: spacing.xs,
   },
+  headerTextCol: {
+    flex: 1,
+    marginRight: spacing.xs,
+  },
   portalBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -475,6 +485,7 @@ const styles = StyleSheet.create({
     borderRadius: spacing.borderRadius.sm,
     borderWidth: 1,
     borderColor: '#fca5a5',
+    flexShrink: 0,
   },
   logoutButtonText: {
     fontSize: typography.sizes.xs,
@@ -644,16 +655,22 @@ const styles = StyleSheet.create({
   },
   doctorDetailsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     backgroundColor: colors.surfaceMuted,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: spacing.borderRadius.xs,
     marginTop: spacing.sm,
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
+  },
+  detailItemEmail: {
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   detailLabel: {
     color: colors.text.muted,
@@ -664,11 +681,14 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
     fontSize: 11,
+    flexShrink: 1,
   },
   cardActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
     marginTop: spacing.sm,
     paddingTop: spacing.xs,
     borderTopWidth: 1,

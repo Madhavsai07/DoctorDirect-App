@@ -49,8 +49,12 @@ export default function DoctorProfileScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
-        <Text style={styles.name}>{doctorDisplayName}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+          {doctorDisplayName}
+        </Text>
+        <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
+          {user?.email}
+        </Text>
         <View style={styles.badgeRow}>
           {profile?.specialization_name && (
             <Badge label={profile.specialization_name} variant="doctor" />
@@ -189,11 +193,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
+    gap: spacing.sm,
   },
   verifiedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    flexShrink: 1,
   },
   divider: {
     height: 1,
@@ -208,6 +214,8 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   infoFee: {
     fontSize: typography.sizes.sm,

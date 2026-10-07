@@ -55,7 +55,9 @@ export default function VerificationPendingScreen() {
 
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Account Email</Text>
-          <Text style={styles.infoValue}>{user?.email}</Text>
+          <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+            {user?.email}
+          </Text>
         </View>
         <View style={styles.divider} />
 

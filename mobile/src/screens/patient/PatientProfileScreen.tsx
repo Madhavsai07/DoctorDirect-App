@@ -27,8 +27,12 @@ export default function PatientProfileScreen() {
             {user?.lastName?.charAt(0) ?? 'V'}
           </Text>
         </View>
-        <Text style={styles.name}>{user?.firstName} {user?.lastName}</Text>
-        <Text style={styles.email}>{user?.email}</Text>
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+          {user?.firstName} {user?.lastName}
+        </Text>
+        <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
+          {user?.email}
+        </Text>
         <Badge label="Verified Patient" variant="patient" style={styles.roleBadge} />
       </Card>
 
@@ -203,6 +207,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
+    gap: spacing.sm,
   },
   divider: {
     height: 1,
@@ -217,6 +222,8 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   logoutButton: {
     marginTop: spacing.xs,

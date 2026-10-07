@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, ScrollView, Alert, Text, View, TouchableOpacity } from 'react-native';
+import { StyleSheet, ScrollView, Alert, Text, View, TouchableOpacity, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { loginUser, registerUser } from '../../store/slices/authSlice';
 import { DoctorRegistration, PatientRegistration, RegistrationPayload } from '../../types/auth';
@@ -10,14 +11,13 @@ import {
   ScreenHeader,
   ErrorView,
   Input,
-  DatePickerInput,
+  AppIcon,
 } from '../../components/common';
 import {
   validateEmail,
   validatePassword,
   validateName,
   validatePhone,
-  validateDateOfBirth,
   validateSpecialization,
   validateLicenseNumber,
   validateExperienceYears,
@@ -41,15 +41,14 @@ export default function LoginScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [emergencyContactName, setEmergencyContactName] = useState('');
-  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [specializationName, setSpecializationName] = useState('');
   const [licenseNumber, setLicenseNumber] = useState('');
   const [experienceYears, setExperienceYears] = useState('');
   const [consultationFee, setConsultationFee] = useState('');
   const [qualification, setQualification] = useState('');
   const [bio, setBio] = useState('');
+  const [idCardUri, setIdCardUri] = useState<string | null>(null);
+  const [idCardError, setIdCardError] = useState<string | null>(null);
 
   // Field error state
   const [errors, setErrors] = useState<Record<string, string | null>>({});
@@ -72,22 +71,40 @@ export default function LoginScreen() {
       newErrors.lastName = validateName(lastName, 'Last name', true);
       newErrors.phone = validatePhone(phone, false, 'Phone number');
 
-      if (role === 'patient') {
-        newErrors.dateOfBirth = validateDateOfBirth(dateOfBirth, false);
-        newErrors.emergencyContactName = validateName(emergencyContactName, 'Emergency contact name', false);
-        newErrors.emergencyContactPhone = validatePhone(emergencyContactPhone, false, 'Emergency contact phone');
-      } else {
+      if (role === 'doctor') {
         newErrors.specializationName = validateSpecialization(specializationName);
         newErrors.licenseNumber = validateLicenseNumber(licenseNumber);
         newErrors.experienceYears = validateExperienceYears(experienceYears);
         newErrors.consultationFee = validateConsultationFee(consultationFee);
         newErrors.qualification = validateQualification(qualification);
+        // ID card is required for doctors
+        if (!idCardUri) {
+          setIdCardError('Please upload your government-issued ID card.');
+          newErrors.idCard = 'ID card required';
+        }
       }
     }
 
     setErrors(newErrors);
     const hasAnyError = Object.values(newErrors).some((err) => err !== null);
     return !hasAnyError;
+  };
+
+  const handlePickIdCard = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Required', 'Please allow access to your photo library to upload an ID card.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      setIdCardUri(result.assets[0].uri);
+      setIdCardError(null);
+    }
   };
 
   const handleSubmit = async () => {
@@ -110,9 +127,6 @@ export default function LoginScreen() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         phone: phone.trim() || undefined,
-        dateOfBirth: dateOfBirth.trim() || undefined,
-        emergencyContactName: emergencyContactName.trim() || undefined,
-        emergencyContactPhone: emergencyContactPhone.trim() || undefined,
       };
       registration = { role, profile };
     } else {
@@ -252,47 +266,7 @@ export default function LoginScreen() {
               keyboardType="phone-pad"
             />
 
-            {role === 'patient' ? (
-              <>
-                <DatePickerInput
-                  label="Date of birth (optional)"
-                  value={dateOfBirth}
-                  onChangeDate={(d) => {
-                    setDateOfBirth(d);
-                    if (hasSubmitted) setErrors((prev) => ({ ...prev, dateOfBirth: validateDateOfBirth(d, false) }));
-                  }}
-                  error={errors.dateOfBirth}
-                  hint="Select using the calendar picker (must be in past)"
-                />
-
-                <Input
-                  label="Emergency contact name (optional)"
-                  placeholder="e.g. John Doe"
-                  value={emergencyContactName}
-                  onChangeText={(text) => {
-                    setEmergencyContactName(text);
-                    if (hasSubmitted) setErrors((prev) => ({ ...prev, emergencyContactName: validateName(text, 'Emergency contact name', false) }));
-                  }}
-                  onBlur={() => setErrors((prev) => ({ ...prev, emergencyContactName: validateName(emergencyContactName, 'Emergency contact name', false) }))}
-                  error={errors.emergencyContactName}
-                  autoCapitalize="words"
-                />
-
-                <Input
-                  label="Emergency contact phone (optional)"
-                  placeholder="e.g. +1234567890"
-                  value={emergencyContactPhone}
-                  onChangeText={(text) => {
-                    const clean = sanitizePhoneInput(text);
-                    setEmergencyContactPhone(clean);
-                    if (hasSubmitted) setErrors((prev) => ({ ...prev, emergencyContactPhone: validatePhone(clean, false, 'Emergency contact phone') }));
-                  }}
-                  onBlur={() => setErrors((prev) => ({ ...prev, emergencyContactPhone: validatePhone(emergencyContactPhone, false, 'Emergency contact phone') }))}
-                  error={errors.emergencyContactPhone}
-                  keyboardType="phone-pad"
-                />
-              </>
-            ) : (
+            {role !== 'patient' ? (
               <>
                 <Text style={styles.sectionTitle}>Professional Information</Text>
 
@@ -337,8 +311,8 @@ export default function LoginScreen() {
                 />
 
                 <Input
-                  label="Consultation fee ($) *"
-                  placeholder="e.g. 75 or 120.00"
+                  label="Consultation fee (₹) *"
+                  placeholder="e.g. 500 or 1200.00"
                   value={consultationFee}
                   onChangeText={(text) => {
                     const clean = sanitizeDecimalInput(text);
@@ -370,8 +344,42 @@ export default function LoginScreen() {
                   multiline
                   numberOfLines={3}
                 />
+
+                {/* Doctor ID Card Upload */}
+                <View style={styles.idCardSection}>
+                  <Text style={styles.idCardLabel}>Government ID Card *</Text>
+                  <Text style={styles.idCardHint}>Upload a clear photo of your Aadhaar, PAN, Passport, or Driving Licence</Text>
+
+                  <TouchableOpacity
+                    style={[styles.idCardUploadBox, idCardUri && styles.idCardUploadBoxFilled, idCardError ? styles.idCardUploadBoxError : null]}
+                    onPress={handlePickIdCard}
+                    activeOpacity={0.7}
+                  >
+                    {idCardUri ? (
+                      <>
+                        <Image source={{ uri: idCardUri }} style={styles.idCardPreview} resizeMode="cover" />
+                        <View style={styles.idCardOverlay}>
+                          <AppIcon name="check" size={20} color="#ffffff" />
+                          <Text style={styles.idCardOverlayText}>Tap to change</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.idCardUploadIcon}>
+                          <AppIcon name="profile" size={28} color={colors.primary} />
+                        </View>
+                        <Text style={styles.idCardUploadTitle}>Tap to upload ID card</Text>
+                        <Text style={styles.idCardUploadSub}>JPG or PNG, max 10 MB</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {idCardError && (
+                    <Text style={styles.idCardErrorText}>{idCardError}</Text>
+                  )}
+                </View>
               </>
-            )}
+            ) : null}
           </View>
         )}
 
@@ -504,5 +512,85 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     marginTop: spacing.sm,
+  },
+  // Doctor ID card upload
+  idCardSection: {
+    marginTop: spacing.md,
+  },
+  idCardLabel: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semiBold,
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  idCardHint: {
+    fontSize: typography.sizes.xs,
+    color: colors.text.muted,
+    marginBottom: spacing.sm,
+    lineHeight: 16,
+  },
+  idCardUploadBox: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: spacing.borderRadius.md,
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceMuted,
+    overflow: 'hidden',
+  },
+  idCardUploadBoxFilled: {
+    borderStyle: 'solid',
+    borderColor: colors.status.success,
+  },
+  idCardUploadBoxError: {
+    borderColor: colors.status.error,
+    backgroundColor: colors.status.errorBg,
+  },
+  idCardPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  idCardOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingVertical: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  idCardOverlayText: {
+    color: '#ffffff',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semiBold,
+  },
+  idCardUploadIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  idCardUploadTitle: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semiBold,
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  idCardUploadSub: {
+    fontSize: typography.sizes.xs,
+    color: colors.text.muted,
+  },
+  idCardErrorText: {
+    fontSize: typography.sizes.xs,
+    color: colors.status.error,
+    marginTop: spacing.xs,
   },
 });

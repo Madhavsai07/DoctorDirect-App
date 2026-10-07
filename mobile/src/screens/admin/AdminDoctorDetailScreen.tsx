@@ -165,7 +165,9 @@ export default function AdminDoctorDetailScreen() {
           <AppIcon name="back" size={18} color={colors.primary} />
           <Text style={styles.backButtonText}>Dashboard</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Doctor Verification</Text>
+        <Text style={styles.headerTitleText} numberOfLines={1} ellipsizeMode="tail">
+          Doctor Verification
+        </Text>
         <View style={{ width: 60 }} />
       </View>
 
@@ -190,10 +192,10 @@ export default function AdminDoctorDetailScreen() {
               <Text style={styles.avatarLargeText}>{initials}</Text>
             </View>
             <View style={styles.identityInfoCol}>
-              <Text style={styles.doctorFullName}>
+              <Text style={styles.doctorFullName} numberOfLines={1} ellipsizeMode="tail">
                 Dr. {doctor.first_name} {doctor.last_name}
               </Text>
-              <Text style={styles.specializationSubtext}>
+              <Text style={styles.specializationSubtext} numberOfLines={1} ellipsizeMode="tail">
                 {doctor.specialization_name}
               </Text>
               <View style={{ marginTop: 6 }}>
@@ -212,7 +214,9 @@ export default function AdminDoctorDetailScreen() {
             </View>
             <View style={styles.infoTextCol}>
               <Text style={styles.infoFieldLabel}>Email Address</Text>
-              <Text style={styles.infoFieldValue}>{doctor.email || 'Not provided'}</Text>
+              <Text style={styles.infoFieldValue} numberOfLines={1} ellipsizeMode="tail">
+                {doctor.email || 'Not provided'}
+              </Text>
             </View>
           </View>
 
@@ -518,11 +522,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
+    flexShrink: 1,
   },
   gridRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.md,
+    flexWrap: 'wrap',
   },
   gridCol: {
     flex: 1,

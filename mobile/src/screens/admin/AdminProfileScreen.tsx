@@ -110,8 +110,12 @@ export default function AdminProfileScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials}</Text>
         </View>
-        <Text style={styles.name}>{displayName}</Text>
-        <Text style={styles.email}>{email}</Text>
+        <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
+          {displayName}
+        </Text>
+        <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
+          {email}
+        </Text>
         <View style={styles.badgeRow}>
           <Badge label="System Administrator" variant="primary" />
           <Badge
@@ -126,7 +130,9 @@ export default function AdminProfileScreen() {
       <Card variant="default" padding="lg" style={styles.infoCard}>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Name</Text>
-          <Text style={styles.infoValue}>{displayName}</Text>
+          <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+            {displayName}
+          </Text>
         </View>
 
         <View style={styles.divider} />
@@ -150,7 +156,9 @@ export default function AdminProfileScreen() {
 
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Contact Email</Text>
-          <Text style={styles.infoValue}>{email}</Text>
+          <Text style={styles.infoValue} numberOfLines={1} ellipsizeMode="tail">
+            {email}
+          </Text>
         </View>
 
         <View style={styles.divider} />
@@ -243,6 +251,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
+    gap: spacing.sm,
   },
   infoCol: {
     paddingVertical: spacing.xs,
@@ -270,6 +279,8 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semiBold,
     color: colors.text.primary,
+    flexShrink: 1,
+    textAlign: 'right',
   },
   monoValue: {
     fontSize: 12,
