@@ -23,6 +23,7 @@ const config = {
   // ── Added in the Authentication milestone ────────────────────────────────
   supabaseUrl: process.env.SUPABASE_URL,
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
   // ── Added in the AI Consultation milestone ────────────────────────────────
   groqApiKey: process.env.GROQ_API_KEY,

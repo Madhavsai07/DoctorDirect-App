@@ -152,7 +152,8 @@ doctorRouter.get(
       const slots = await doctorService.getSlots(
         doctorProfile.doctor_id,
         req.query.from_date,
-        req.query.to_date
+        req.query.to_date,
+        true
       );
       res.json({ slots });
     } catch (err) {
@@ -176,6 +177,78 @@ doctorRouter.post(
         req.body.to_date
       );
       res.json({ slots });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// GET /api/v1/doctor/me/schedule-overrides — date-specific rules in a range
+doctorRouter.get(
+  '/me/schedule-overrides',
+  requireAuth,
+  requireRole('doctor'),
+  requireApprovedDoctor,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const profile = await doctorService.getDoctorProfileByUserId(req.user!.id);
+      const overrides = await doctorService.getScheduleOverrides(
+        profile.doctor_id,
+        req.query.from_date,
+        req.query.to_date
+      );
+      res.json({ overrides });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// PUT /api/v1/doctor/me/schedule-overrides — replace this date's custom windows or block it
+doctorRouter.put(
+  '/me/schedule-overrides',
+  requireAuth,
+  requireRole('doctor'),
+  requireApprovedDoctor,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const profile = await doctorService.getDoctorProfileByUserId(req.user!.id);
+      await doctorService.saveScheduleOverride(profile.doctor_id, req.body);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// DELETE /api/v1/doctor/me/schedule-overrides/:date — restore recurring weekly hours
+doctorRouter.delete(
+  '/me/schedule-overrides/:date',
+  requireAuth,
+  requireRole('doctor'),
+  requireApprovedDoctor,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const profile = await doctorService.getDoctorProfileByUserId(req.user!.id);
+      await doctorService.deleteScheduleOverride(profile.doctor_id, req.params.date);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// PATCH /api/v1/doctor/me/slots/:slotId — edit, block, or restore an unbooked slot
+doctorRouter.patch(
+  '/me/slots/:slotId',
+  requireAuth,
+  requireRole('doctor'),
+  requireApprovedDoctor,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const profile = await doctorService.getDoctorProfileByUserId(req.user!.id);
+      const slot = await doctorService.updateSlot(profile.doctor_id, req.params.slotId, req.body);
+      res.json({ slot });
     } catch (err) {
       next(err);
     }

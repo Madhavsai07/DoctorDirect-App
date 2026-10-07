@@ -28,12 +28,34 @@ function formatError(error: unknown): string {
 	if (apiMessage.includes('specialization')) return 'Choose a specialization listed in the application.';
 	if (apiMessage.includes('license')) return 'That medical license number is already in use or invalid.';
 	if (apiMessage.includes('inactive')) return 'This application account is inactive. Contact support.';
+	if (message.includes('id card') || message.includes('supabase storage') || apiMessage.includes('id card')) {
+		return error instanceof Error ? error.message : 'Unable to upload the ID card.';
+	}
 	if (message.includes('supabase is not configured')) return 'Authentication is not configured on this app. Contact support.';
 	return 'Authentication failed. Please try again.';
 }
 
 function identityFromUser(user: User): AuthIdentity {
 	return { id: user.id, email: user.email ?? '' };
+}
+
+async function uploadDoctorIdCard(userId: string, uri: string, contentType: 'image/jpeg' | 'image/png'): Promise<string> {
+	const response = await fetch(uri);
+	if (!response.ok) throw new Error('Unable to read the selected ID card image.');
+
+	const image = await response.arrayBuffer();
+	if (image.byteLength === 0 || image.byteLength > 10 * 1024 * 1024) {
+		throw new Error('The ID card image must be non-empty and 10 MB or smaller.');
+	}
+
+	const extension = contentType === 'image/png' ? 'png' : 'jpg';
+	const objectPath = `${userId}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}.${extension}`;
+	const { data, error } = await requireSupabase()
+		.storage
+		.from('doctor-id-cards')
+		.upload(objectPath, image, { contentType, upsert: false });
+	if (error) throw new Error(`Unable to upload the ID card image: ${error.message}`);
+	return data.path;
 }
 
 function mapApplicationUser(raw: Record<string, unknown>, profile: Record<string, unknown> | null): AuthUser {
@@ -59,7 +81,30 @@ async function provisionPendingProfile(userId: string): Promise<void> {
 
 	const registration = JSON.parse(stored) as RegistrationPayload;
 	const endpoint = registration.role === 'doctor' ? '/auth/register/doctor' : '/auth/register/patient';
-	await apiClient.post(endpoint, registration.profile);
+
+	if (registration.role === 'doctor') {
+		let idCardUrl = registration.profile.idCardUrl;
+		if (!idCardUrl) {
+			const { idCardUri, idCardMimeType } = registration.profile;
+			if (!idCardUri || !idCardMimeType) {
+				throw new Error('Select a JPG or PNG government ID card before submitting your doctor application.');
+			}
+			idCardUrl = await uploadDoctorIdCard(userId, idCardUri, idCardMimeType);
+			registration.profile = {
+				...registration.profile,
+				idCardUrl,
+				idCardUri: undefined,
+				idCardMimeType: undefined,
+			};
+			await appStorage.setItem(key, JSON.stringify(registration));
+		}
+		const profile = { ...registration.profile, idCardUrl };
+		delete profile.idCardUri;
+		delete profile.idCardMimeType;
+		await apiClient.post(endpoint, profile);
+	} else {
+		await apiClient.post(endpoint, registration.profile);
+	}
 	await appStorage.deleteItem(key);
 }
 
@@ -150,21 +195,49 @@ export const authService = {
 		if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Enter a valid email address.');
 		if (credentials.password.length < 8) throw new Error('Choose a stronger password with at least 8 characters.');
 
-		const client = requireSupabase();
-		const current = await client.auth.getSession();
-		if (current.data.session?.user.email?.toLowerCase() === email.toLowerCase()) {
-			await savePendingProfile(current.data.session.user.id, registration);
-			const bundle = await activateSession(current.data.session);
+		// Attempt Supabase sign-up if configured
+		try {
+			const client = requireSupabase();
+			const current = await client.auth.getSession();
+			if (current.data.session?.user.email?.toLowerCase() === email.toLowerCase()) {
+				await savePendingProfile(current.data.session.user.id, registration);
+				const bundle = await activateSession(current.data.session);
+				return { bundle, confirmationRequired: false };
+			}
+
+			const { data, error } = await client.auth.signUp({ email, password: credentials.password });
+			if (error || !data.user) throw new Error(formatError(error ?? new Error('Registration failed')));
+			await savePendingProfile(data.user.id, registration);
+			if (!data.session) return { bundle: null, confirmationRequired: true };
+
+			const bundle = await activateSession(data.session);
 			return { bundle, confirmationRequired: false };
+		} catch (err: unknown) {
+			// If Supabase is not configured, fall back to dev-token registration
+			const msg = err instanceof Error ? err.message : '';
+			if (!msg.toLowerCase().includes('supabase')) throw err;
 		}
 
-		const { data, error } = await client.auth.signUp({ email, password: credentials.password });
-		if (error || !data.user) throw new Error(formatError(error ?? new Error('Registration failed')));
-		await savePendingProfile(data.user.id, registration);
-		if (!data.session) return { bundle: null, confirmationRequired: true };
-
-		const bundle = await activateSession(data.session);
-		return { bundle, confirmationRequired: false };
+		// Dev-mode fallback: store a dev token and provision the profile via the local backend
+		if (registration.role === 'doctor') {
+			throw new Error('Doctor ID card upload requires an authenticated Supabase session and configured Storage.');
+		}
+		const devToken = `dev-token-${email}`;
+		await appStorage.setItem(DEV_TOKEN_KEY, devToken);
+		try {
+			await apiClient.post('/auth/register/patient', registration.profile);
+			const response = await apiClient.get('/auth/me');
+			const rawUser = response.data.user as Record<string, unknown>;
+			const profile = (response.data.profile ?? null) as Record<string, unknown> | null;
+			const user = mapApplicationUser(rawUser, profile);
+			return {
+				bundle: { identity: { id: String(rawUser.auth_user_id ?? rawUser.id), email: user.email }, user },
+				confirmationRequired: false,
+			};
+		} catch (err) {
+			await appStorage.deleteItem(DEV_TOKEN_KEY);
+			throw new Error(formatError(err instanceof Error ? err : new Error('Registration failed')));
+		}
 	},
 
 	async logout(): Promise<void> {

@@ -23,8 +23,8 @@ export default function PatientProfileScreen() {
       <Card variant="elevated" padding="lg" style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {user?.firstName?.charAt(0) ?? 'R'}
-            {user?.lastName?.charAt(0) ?? 'V'}
+            {user?.firstName?.charAt(0) ?? ''}
+            {user?.lastName?.charAt(0) ?? ''}
           </Text>
         </View>
         <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">
@@ -33,31 +33,7 @@ export default function PatientProfileScreen() {
         <Text style={styles.email} numberOfLines={1} ellipsizeMode="tail">
           {user?.email}
         </Text>
-        <Badge label="Verified Patient" variant="patient" style={styles.roleBadge} />
-      </Card>
-
-      {/* Medical Profile Summary */}
-      <Text style={styles.sectionTitle}>Medical Information</Text>
-      <Card variant="default" padding="lg" style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Blood Group</Text>
-          <Text style={styles.infoValue}>O+ Positive</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Known Allergies</Text>
-          <Text style={styles.infoValue}>Penicillin</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Medical History</Text>
-          <Text style={styles.infoValue}>Mild asthma in childhood</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Emergency Contact</Text>
-          <Text style={styles.infoValue}>Pooja Verma (+91 98765 43212)</Text>
-        </View>
+        <Badge label="Patient" variant="patient" style={styles.roleBadge} />
       </Card>
 
       {/* Digital Prescriptions History */}
@@ -77,25 +53,6 @@ export default function PatientProfileScreen() {
           </View>
           <Text style={styles.recordArrow}>→</Text>
         </TouchableOpacity>
-      </Card>
-
-      {/* Account Settings */}
-      <Text style={styles.sectionTitle}>Care Settings</Text>
-      <Card variant="default" padding="lg" style={styles.infoCard}>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Consultation Mode</Text>
-          <Text style={styles.infoValue}>Telehealth Video / Audio</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Language</Text>
-          <Text style={styles.infoValue}>English</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Notifications</Text>
-          <Text style={styles.infoValue}>Enabled</Text>
-        </View>
       </Card>
 
       {/* Logout Action */}

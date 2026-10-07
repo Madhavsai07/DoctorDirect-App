@@ -107,7 +107,7 @@ flowchart TD
 
 - **Role-Based Authentication**: Supabase email/password sessions with PostgreSQL-authoritative Patient and Doctor roles.
 - **Doctor Discovery**: Filter verified doctors by specialization, experience, consultation fee, and available hours.
-- **Appointment Scheduling**: Real-time slot locking, booking confirmation, cancellation, and rescheduling.
+- **Appointment Scheduling**: Recurring multi-window weekly hours, 15/30/45/60-minute slots, a doctor calendar with a configurable 7/14/21/30-day horizon, date-specific custom hours or leave blocks, individual unbooked-slot controls, and server-authoritative booking, confirmation, cancellation, and rescheduling.
 - **WebRTC Video Consultations**: Encrypted peer-to-peer audio/video calling with call controls.
 - **AI-Assisted Documentation**: Automatic draft summary generation from consultation audio transcripts.
 - **Doctor Clinical Gate**: Mandatory physician review and approval before any clinical summary or prescription is published.

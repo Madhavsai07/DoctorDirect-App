@@ -162,6 +162,7 @@ export const adminSlice = createSlice({
       .addCase(fetchDoctorDetail.pending, (state) => {
         state.isLoading = true;
         state.error = null;
+        state.selectedDoctor = null;
       })
       .addCase(fetchDoctorDetail.fulfilled, (state, action) => {
         state.isLoading = false;
@@ -169,6 +170,7 @@ export const adminSlice = createSlice({
       })
       .addCase(fetchDoctorDetail.rejected, (state, action) => {
         state.isLoading = false;
+        state.selectedDoctor = null;
         state.error = (action.payload as string) || 'Could not load doctor detail';
       });
 

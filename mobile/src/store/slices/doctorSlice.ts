@@ -10,12 +10,17 @@ import {
   removeAvailabilityWindow,
   fetchMySlots,
   generateMySlots,
+  fetchMyScheduleOverrides,
+  saveMyScheduleOverride,
+  deleteMyScheduleOverride,
+  updateMySlot,
 } from '../../services/doctors/doctorService';
 import {
   Doctor,
   Specialization,
   Availability,
   Slot,
+  ScheduleOverride,
   normalizeDoctor,
   normalizeAvailability,
   normalizeSlot,
@@ -35,6 +40,7 @@ interface DoctorState {
   // Doctor-facing
   myAvailability: Availability[];
   mySlots: Slot[];
+  myScheduleOverrides: ScheduleOverride[];
 
   // UI
   isLoadingList: boolean;
@@ -51,6 +57,7 @@ const initialState: DoctorState = {
   doctorSlots: [],
   myAvailability: [],
   mySlots: [],
+  myScheduleOverrides: [],
   isLoadingList: false,
   isLoadingProfile: false,
   isLoadingAvailability: false,
@@ -194,6 +201,58 @@ export const loadMySlots = createAsyncThunk(
   }
 );
 
+export const loadMyScheduleOverrides = createAsyncThunk(
+  'doctor/loadMyScheduleOverrides',
+  async ({ fromDate, toDate }: { fromDate: string; toDate: string }, { rejectWithValue }) => {
+    try {
+      return await fetchMyScheduleOverrides(fromDate, toDate);
+    } catch (error: unknown) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to load date overrides');
+    }
+  }
+);
+
+export const saveScheduleOverride = createAsyncThunk(
+  'doctor/saveScheduleOverride',
+  async (
+    payload: { date: string; is_blocked: boolean; windows: Array<{ start_time: string; end_time: string; slot_duration_minutes: number }> },
+    { rejectWithValue }
+  ) => {
+    try {
+      await saveMyScheduleOverride(payload);
+      return payload.date;
+    } catch (error: unknown) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to save date override');
+    }
+  }
+);
+
+export const clearScheduleOverride = createAsyncThunk(
+  'doctor/clearScheduleOverride',
+  async (date: string, { rejectWithValue }) => {
+    try {
+      await deleteMyScheduleOverride(date);
+      return date;
+    } catch (error: unknown) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to restore weekly schedule');
+    }
+  }
+);
+
+export const changeMySlot = createAsyncThunk(
+  'doctor/changeMySlot',
+  async (
+    payload: { slotId: string; action: 'edit' | 'block' | 'restore'; start_time?: string; end_time?: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      return normalizeSlot(await updateMySlot(payload));
+    } catch (error: unknown) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Failed to update slot');
+    }
+  }
+);
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Slice
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,7 +309,13 @@ export const doctorSlice = createSlice({
     // My slots
       .addCase(loadMySlots.pending, (state) => { state.isLoadingSlots = true; })
       .addCase(loadMySlots.fulfilled, (state, a) => { state.isLoadingSlots = false; state.mySlots = a.payload; })
-      .addCase(loadMySlots.rejected, (state, a) => { state.isLoadingSlots = false; state.error = a.payload as string; });
+      .addCase(loadMySlots.rejected, (state, a) => { state.isLoadingSlots = false; state.error = a.payload as string; })
+
+      .addCase(loadMyScheduleOverrides.fulfilled, (state, a) => { state.myScheduleOverrides = a.payload; })
+      .addCase(changeMySlot.fulfilled, (state, a) => {
+        const index = state.mySlots.findIndex((slot) => slot.id === a.payload.id);
+        if (index >= 0) state.mySlots[index] = a.payload;
+      });
   },
 });
 

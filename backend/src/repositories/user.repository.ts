@@ -130,6 +130,7 @@ export class UserRepository {
     consultationFee: number;
     qualification: string;
     bio: string | null;
+    idCardUrl: string | null;
   }): Promise<DbUser> {
     const client = await pool.connect();
     try {
@@ -159,10 +160,10 @@ export class UserRepository {
         [input.authUserId, input.email, input.phone, input.firstName, input.lastName]
       );
       const docResult = await client.query<{ id: string }>(
-        `INSERT INTO doctors (user_id, specialization_id, license_number, experience_years, consultation_fee, qualification, bio, is_available, verification_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, 'pending')
+        `INSERT INTO doctors (user_id, specialization_id, license_number, experience_years, consultation_fee, qualification, bio, id_card_url, is_available, verification_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE, 'pending')
          RETURNING id`,
-        [created.rows[0].id, specialization.rows[0].id, input.licenseNumber, input.experienceYears, input.consultationFee, input.qualification, input.bio]
+        [created.rows[0].id, specialization.rows[0].id, input.licenseNumber, input.experienceYears, input.consultationFee, input.qualification, input.bio, input.idCardUrl]
       );
 
       const doctorId = docResult.rows[0].id;

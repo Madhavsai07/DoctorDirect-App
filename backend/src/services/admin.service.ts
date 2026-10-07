@@ -1,4 +1,5 @@
 import { doctorRepository, DbDoctorListing } from '../repositories/doctor.repository';
+import { getSupabaseAdminClient } from './supabase';
 
 /**
  * AdminService
@@ -35,6 +36,28 @@ export const adminService = {
       throw Object.assign(new Error('Doctor not found'), { status: 404 });
     }
     return doc;
+  },
+
+  async getDoctorIdCardUrl(doctorId: string): Promise<string> {
+    const doctor = await doctorRepository.findDoctorById(doctorId);
+    if (!doctor) {
+      throw Object.assign(new Error('Doctor not found'), { status: 404 });
+    }
+    if (!doctor.id_card_url) {
+      throw Object.assign(new Error('No government ID card was uploaded for this doctor.'), { status: 404 });
+    }
+    if (!doctor.id_card_url.startsWith(`${doctor.user_id}/`)) {
+      throw Object.assign(new Error('The stored ID card reference is invalid.'), { status: 422 });
+    }
+
+    const { data, error } = await getSupabaseAdminClient()
+      .storage
+      .from('doctor-id-cards')
+      .createSignedUrl(doctor.id_card_url, 300);
+    if (error) {
+      throw Object.assign(new Error(`Unable to access the doctor's ID card: ${error.message}`), { status: 502 });
+    }
+    return data.signedUrl;
   },
 
   /**

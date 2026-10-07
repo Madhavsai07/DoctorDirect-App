@@ -44,6 +44,20 @@ export interface Slot {
   startTime: string; // "HH:MM:SS"
   endTime: string;
   status: 'available' | 'reserved' | 'booked' | 'cancelled' | 'blocked';
+  isManualOverride: boolean;
+}
+
+export interface ScheduleOverride {
+  id: string;
+  doctor_id: string;
+  override_date: string;
+  is_blocked: boolean;
+  windows: Array<{
+    id: string;
+    start_time: string;
+    end_time: string;
+    slot_duration_minutes: number;
+  }>;
 }
 
 // ─── API response shapes ──────────────────────────────────────────────────────
@@ -102,6 +116,7 @@ export interface SlotsResponse {
     start_time: string;
     end_time: string;
     status: Slot['status'];
+    is_manual_override: boolean;
   }>;
 }
 
@@ -151,6 +166,7 @@ export function normalizeSlot(raw: SlotsResponse['slots'][0]): Slot {
     startTime: raw.start_time,
     endTime: raw.end_time,
     status: raw.status,
+    isManualOverride: raw.is_manual_override ?? false,
   };
 }
 

@@ -11,6 +11,7 @@ import type {
   DoctorProfileResponse,
   AvailabilityResponse,
   SlotsResponse,
+  ScheduleOverride,
 } from '../../types/doctor';
 
 // ── Public endpoints ──────────────────────────────────────────────────────────
@@ -110,4 +111,40 @@ export async function generateMySlots(fromDate: string, toDate: string): Promise
     to_date: toDate,
   });
   return res.data;
+}
+
+export async function fetchMyScheduleOverrides(
+  fromDate: string,
+  toDate: string
+): Promise<ScheduleOverride[]> {
+  const res = await apiClient.get<{ overrides: ScheduleOverride[] }>('/doctor/me/schedule-overrides', {
+    params: { from_date: fromDate, to_date: toDate },
+  });
+  return res.data.overrides;
+}
+
+export async function saveMyScheduleOverride(payload: {
+  date: string;
+  is_blocked: boolean;
+  windows: Array<{ start_time: string; end_time: string; slot_duration_minutes: number }>;
+}): Promise<void> {
+  await apiClient.put('/doctor/me/schedule-overrides', payload);
+}
+
+export async function deleteMyScheduleOverride(date: string): Promise<void> {
+  await apiClient.delete(`/doctor/me/schedule-overrides/${date}`);
+}
+
+export async function updateMySlot(payload: {
+  slotId: string;
+  action: 'edit' | 'block' | 'restore';
+  start_time?: string;
+  end_time?: string;
+}): Promise<SlotsResponse['slots'][0]> {
+  const { slotId, ...body } = payload;
+  const res = await apiClient.patch<{ slot: SlotsResponse['slots'][0] }>(
+    `/doctor/me/slots/${slotId}`,
+    body
+  );
+  return res.data.slot;
 }

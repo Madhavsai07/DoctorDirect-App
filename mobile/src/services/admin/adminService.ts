@@ -17,11 +17,13 @@ export interface AdminDoctor {
   consultation_fee: number;
   bio: string | null;
   qualification: string | null;
+  id_card_url: string | null;
   is_available: boolean;
   rating: number;
   verification_status: VerificationStatus;
   verified_at: string | null;
   verified_by: string | null;
+  user_created_at: string | null;
 }
 
 export interface ListDoctorsParams {
@@ -74,6 +76,11 @@ export const adminService = {
   async getDoctorDetail(doctorId: string): Promise<AdminDoctor> {
     const res = await apiClient.get<DoctorDetailResponse>(`/admin/doctors/${doctorId}`);
     return res.data.doctor;
+  },
+
+  async getDoctorIdCardUrl(doctorId: string): Promise<string> {
+    const res = await apiClient.get<{ url: string }>(`/admin/doctors/${doctorId}/id-card`);
+    return res.data.url;
   },
 
   /**

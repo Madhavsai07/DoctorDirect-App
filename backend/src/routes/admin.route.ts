@@ -35,6 +35,18 @@ adminRouter.get(
  * Get full doctor details (any verification status).
  */
 adminRouter.get(
+  '/doctors/:doctorId/id-card',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const url = await adminService.getDoctorIdCardUrl(req.params.doctorId);
+      res.json({ url });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+adminRouter.get(
   '/doctors/:doctorId',
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

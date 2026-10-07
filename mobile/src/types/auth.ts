@@ -62,6 +62,9 @@ export interface DoctorRegistration {
   consultationFee: number;
   qualification: string;
   bio?: string;
+  idCardUri?: string;
+  idCardMimeType?: 'image/jpeg' | 'image/png';
+  idCardUrl?: string;
 }
 
 export type RegistrationPayload =

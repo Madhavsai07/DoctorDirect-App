@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,7 +18,7 @@ import {
   clearActionMessage,
 } from '../../store/slices/adminSlice';
 import { AdminStackParamList } from '../../navigation/types';
-import { VerificationStatus } from '../../services/admin/adminService';
+import { adminService, VerificationStatus } from '../../services/admin/adminService';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
 import {
@@ -43,10 +44,42 @@ export default function AdminDoctorDetailScreen() {
     useAppSelector((state) => state.admin);
 
   const [actionInProgress, setActionInProgress] = useState<'approve' | 'reject' | null>(null);
+  const [idCardUrl, setIdCardUrl] = useState<string | null>(null);
+  const [isIdCardLoading, setIsIdCardLoading] = useState(false);
+  const [idCardError, setIdCardError] = useState<string | null>(null);
 
   useEffect(() => {
     dispatch(fetchDoctorDetail(doctorId));
   }, [dispatch, doctorId]);
+
+  useEffect(() => {
+    if (selectedDoctor?.doctor_id !== doctorId || !selectedDoctor.id_card_url) {
+      setIdCardUrl(null);
+      setIdCardError(null);
+      setIsIdCardLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsIdCardLoading(true);
+    setIdCardError(null);
+    adminService.getDoctorIdCardUrl(doctorId)
+      .then((url) => {
+        if (isCurrent) setIdCardUrl(url);
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setIdCardError(error instanceof Error ? error.message : 'Unable to load the uploaded ID card.');
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsIdCardLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [doctorId, selectedDoctor?.doctor_id, selectedDoctor?.id_card_url]);
 
   const handleApprove = () => {
     if (!selectedDoctor) return;
@@ -265,7 +298,7 @@ export default function AdminDoctorDetailScreen() {
             <View style={styles.gridCol}>
               <Text style={styles.infoFieldLabel}>Consultation Fee</Text>
               <Text style={[styles.credentialHighlight, { color: colors.secondary }]}>
-                ${doctor.consultation_fee} USD
+                ₹{doctor.consultation_fee}
               </Text>
             </View>
 
@@ -286,6 +319,32 @@ export default function AdminDoctorDetailScreen() {
               ? doctor.bio
               : 'No biographical statement provided with this application.'}
           </Text>
+        </Card>
+
+        {/* Government ID Card */}
+        <Card variant="default" padding="lg" style={styles.sectionCard}>
+          <Text style={styles.sectionHeaderTitle}>GOVERNMENT ID CARD</Text>
+          {doctor.id_card_url ? (
+            <View style={styles.idCardContainer}>
+              {isIdCardLoading ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : idCardError ? (
+                <Text style={styles.idCardMissingText}>{idCardError}</Text>
+              ) : idCardUrl ? (
+                <Image
+                  source={{ uri: idCardUrl }}
+                  style={styles.idCardImage}
+                  resizeMode="contain"
+                  onError={() => setIdCardError('The uploaded ID card could not be displayed.')}
+                />
+              ) : null}
+            </View>
+          ) : (
+            <View style={styles.idCardMissing}>
+              <AppIcon name="warning" size={18} color={colors.text.muted} />
+              <Text style={styles.idCardMissingText}>No ID card uploaded by this applicant.</Text>
+            </View>
+          )}
         </Card>
 
         {/* Verification Audit Trail */}
@@ -607,5 +666,28 @@ const styles = StyleSheet.create({
     color: colors.status.errorText,
     fontWeight: typography.weights.semiBold,
     flex: 1,
+  },
+  idCardContainer: {
+    borderRadius: spacing.borderRadius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceMuted,
+    minHeight: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  idCardImage: {
+    width: '100%',
+    height: 200,
+  },
+  idCardMissing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  idCardMissingText: {
+    fontSize: typography.sizes.sm,
+    color: colors.text.muted,
+    fontStyle: 'italic',
   },
 });

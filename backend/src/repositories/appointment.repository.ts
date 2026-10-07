@@ -93,7 +93,18 @@ export class AppointmentRepository {
     try {
       await client.query('BEGIN');
 
-      // 1. Lock slot row for concurrency safety
+      const slotIdentity = await client.query<{ doctor_id: string }>(
+        'SELECT doctor_id FROM slots WHERE id = $1',
+        [params.slotId]
+      );
+      if (!slotIdentity.rows[0]) {
+        const err: any = new Error('Slot not found');
+        err.status = 404;
+        throw err;
+      }
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text))', [slotIdentity.rows[0].doctor_id]);
+
+      // 1. Lock slot row for concurrency safety after serializing schedule changes.
       const slotRes = await client.query<{
         id: string;
         doctor_id: string;
@@ -101,8 +112,9 @@ export class AppointmentRepository {
         start_time: string;
         end_time: string;
         status: string;
+        is_manual_override: boolean;
       }>(
-        `SELECT id, doctor_id, date::text, start_time::text, end_time::text, status
+        `SELECT id, doctor_id, date::text, start_time::text, end_time::text, status, is_manual_override
          FROM slots
          WHERE id = $1
          FOR UPDATE`,
@@ -136,21 +148,66 @@ export class AppointmentRepository {
       }
 
       // 4. Validate doctor user is active, available, and approved
-      const doctorCheck = await client.query<{ is_active: boolean; is_available: boolean; verification_status: string; user_id: string }>(
-        `SELECT u.is_active, d.is_available, d.verification_status, u.id AS user_id
+      const doctorCheck = await client.query<{
+        is_active: boolean;
+        verification_status: string;
+        has_active_schedule: boolean;
+        user_id: string;
+      }>(
+        `SELECT u.is_active, d.verification_status, u.id AS user_id,
+                (
+                  EXISTS (
+                    SELECT 1
+                    FROM schedule_date_overrides o
+                    WHERE o.doctor_id = d.id AND o.override_date = $2::date
+                      AND o.is_blocked = FALSE
+                      AND (
+                        $5::boolean
+                        OR EXISTS (
+                          SELECT 1 FROM schedule_date_override_windows w
+                          WHERE w.override_id = o.id
+                            AND w.start_time <= $3::time AND w.end_time >= $4::time
+                            AND EXTRACT(EPOCH FROM ($4::time - $3::time)) / 60
+                                = w.slot_duration_minutes
+                        )
+                      )
+                  )
+                  OR (
+                    NOT EXISTS (
+                      SELECT 1 FROM schedule_date_overrides o
+                      WHERE o.doctor_id = d.id AND o.override_date = $2::date
+                    )
+                    AND (
+                      $5::boolean
+                      OR EXISTS (
+                        SELECT 1 FROM availability av
+                        WHERE av.doctor_id = d.id AND av.is_active = TRUE
+                          AND av.day_of_week = EXTRACT(DOW FROM $2::date)
+                          AND av.start_time <= $3::time AND av.end_time >= $4::time
+                          AND EXTRACT(EPOCH FROM ($4::time - $3::time)) / 60
+                              = av.slot_duration_minutes
+                      )
+                    )
+                  )
+                ) AS has_active_schedule
          FROM doctors d
          JOIN users u ON d.user_id = u.id
          WHERE d.id = $1`,
-        [slot.doctor_id]
+        [slot.doctor_id, slot.date, slot.start_time, slot.end_time, slot.is_manual_override]
       );
-      if (doctorCheck.rowCount === 0 || !doctorCheck.rows[0].is_active || !doctorCheck.rows[0].is_available) {
-        const err: any = new Error('Doctor is currently unavailable or inactive');
+      if (doctorCheck.rowCount === 0 || !doctorCheck.rows[0].is_active) {
+        const err: any = new Error('Doctor account is inactive');
         err.status = 400;
         throw err;
       }
       if (doctorCheck.rows[0].verification_status !== 'approved') {
         const err: any = new Error('Cannot book appointment: doctor is not yet verified');
         err.status = 403;
+        throw err;
+      }
+      if (!doctorCheck.rows[0].has_active_schedule) {
+        const err: any = new Error("This appointment slot is no longer within the doctor's active schedule");
+        err.status = 409;
         throw err;
       }
 
@@ -495,6 +552,7 @@ export class AppointmentRepository {
         err.status = 403;
         throw err;
       }
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1::text))', [appt.doctor_id]);
 
       const usersRes = await client.query<{ patient_user_id: string; doctor_user_id: string }>(
         `SELECT pat_u.id AS patient_user_id, doc_u.id AS doctor_user_id
@@ -519,9 +577,11 @@ export class AppointmentRepository {
         doctor_id: string;
         date: string;
         start_time: string;
+        end_time: string;
         status: string;
+        is_manual_override: boolean;
       }>(
-        `SELECT id, doctor_id, date::text, start_time::text, status
+        `SELECT id, doctor_id, date::text, start_time::text, end_time::text, status, is_manual_override
          FROM slots
          WHERE id = $1
          FOR UPDATE`,
@@ -544,6 +604,63 @@ export class AppointmentRepository {
 
       if (newSlot.status !== 'available') {
         const err: any = new Error('New slot is not available');
+        err.status = 409;
+        throw err;
+      }
+
+      const scheduleCheck = await client.query<{
+        is_active: boolean;
+        verification_status: string;
+        has_active_schedule: boolean;
+      }>(
+        `SELECT u.is_active, d.verification_status,
+                (
+                  EXISTS (
+                    SELECT 1 FROM schedule_date_overrides o
+                    WHERE o.doctor_id = d.id AND o.override_date = $2::date AND o.is_blocked = FALSE
+                      AND (
+                        $5::boolean
+                        OR EXISTS (
+                          SELECT 1 FROM schedule_date_override_windows w
+                          WHERE w.override_id = o.id
+                            AND w.start_time <= $3::time AND w.end_time >= $4::time
+                            AND EXTRACT(EPOCH FROM ($4::time - $3::time)) / 60 = w.slot_duration_minutes
+                        )
+                      )
+                  )
+                  OR (
+                    NOT EXISTS (
+                      SELECT 1 FROM schedule_date_overrides o
+                      WHERE o.doctor_id = d.id AND o.override_date = $2::date
+                    )
+                    AND (
+                      $5::boolean
+                      OR EXISTS (
+                        SELECT 1 FROM availability av
+                        WHERE av.doctor_id = d.id AND av.is_active = TRUE
+                          AND av.day_of_week = EXTRACT(DOW FROM $2::date)
+                          AND av.start_time <= $3::time AND av.end_time >= $4::time
+                          AND EXTRACT(EPOCH FROM ($4::time - $3::time)) / 60 = av.slot_duration_minutes
+                      )
+                    )
+                  )
+                ) AS has_active_schedule
+         FROM doctors d JOIN users u ON u.id = d.user_id
+         WHERE d.id = $1`,
+        [newSlot.doctor_id, newSlot.date, newSlot.start_time, newSlot.end_time, newSlot.is_manual_override]
+      );
+      if (!scheduleCheck.rows[0]?.is_active) {
+        const err: any = new Error('Doctor account is inactive');
+        err.status = 400;
+        throw err;
+      }
+      if (scheduleCheck.rows[0].verification_status !== 'approved') {
+        const err: any = new Error('Cannot reschedule with a doctor who is not approved');
+        err.status = 403;
+        throw err;
+      }
+      if (!scheduleCheck.rows[0].has_active_schedule) {
+        const err: any = new Error("This appointment slot is no longer within the doctor's active schedule");
         err.status = 409;
         throw err;
       }

@@ -8,14 +8,13 @@ import {
   RefreshControl,
   ScrollView,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PatientDoctorStackParamList } from '../../navigation/types';
 import { colors, spacing, typography } from '../../theme';
 import {
   ScreenHeader,
   Card,
-  Badge,
   Button,
   Input,
   AppIcon,
@@ -54,9 +53,11 @@ export default function PatientDoctorsScreen() {
     );
   }, [dispatch, debouncedSearch, selectedSpecId]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   const renderDoctor = ({ item }: { item: Doctor }) => {
     const firstInitial = (item.firstName || '')[0] || 'D';
@@ -81,11 +82,6 @@ export default function PatientDoctorsScreen() {
               </Text>
             </View>
           </View>
-          <Badge
-            label={item.isAvailable ? 'Available' : 'Unavailable'}
-            variant={item.isAvailable ? 'success' : 'neutral'}
-            size="sm"
-          />
         </View>
 
         {item.bio ? (

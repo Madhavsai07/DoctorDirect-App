@@ -212,6 +212,16 @@ authRouter.post('/register/doctor', requireSupabaseAuth, async (req: Request, re
       return;
     }
 
+    const idCardUrl = body.idCardUrl;
+    if (
+      typeof idCardUrl !== 'string' ||
+      !idCardUrl.startsWith(`${identity.id}/`) ||
+      idCardUrl.length > 1024
+    ) {
+      res.status(422).json({ error: 'Upload a government ID card before submitting your doctor application.' });
+      return;
+    }
+
     const user = await userRepository.registerDoctor({
       authUserId: identity.id,
       email: validatedEmail,
@@ -224,6 +234,7 @@ authRouter.post('/register/doctor', requireSupabaseAuth, async (req: Request, re
       consultationFee,
       qualification: validateQualification(body.qualification),
       bio: optionalText(body.bio, 4000),
+      idCardUrl,
     });
     res.status(201).json({ user });
   } catch (error) {

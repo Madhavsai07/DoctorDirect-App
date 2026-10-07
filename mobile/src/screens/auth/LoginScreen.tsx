@@ -48,6 +48,7 @@ export default function LoginScreen() {
   const [qualification, setQualification] = useState('');
   const [bio, setBio] = useState('');
   const [idCardUri, setIdCardUri] = useState<string | null>(null);
+  const [idCardMimeType, setIdCardMimeType] = useState<'image/jpeg' | 'image/png' | null>(null);
   const [idCardError, setIdCardError] = useState<string | null>(null);
 
   // Field error state
@@ -102,7 +103,25 @@ export default function LoginScreen() {
       quality: 0.85,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setIdCardUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      const fileType = asset.mimeType ?? (
+        /\.png$/i.test(asset.fileName ?? asset.uri) ? 'image/png' :
+          /\.(jpe?g)$/i.test(asset.fileName ?? asset.uri) ? 'image/jpeg' : undefined
+      );
+      if (asset.fileSize !== undefined && asset.fileSize > 10 * 1024 * 1024) {
+        setIdCardError('The ID card image must be 10 MB or smaller.');
+        setIdCardUri(null);
+        setIdCardMimeType(null);
+        return;
+      }
+      if (fileType !== 'image/jpeg' && fileType !== 'image/png') {
+        setIdCardError('Choose a JPG or PNG image for your ID card.');
+        setIdCardUri(null);
+        setIdCardMimeType(null);
+        return;
+      }
+      setIdCardUri(asset.uri);
+      setIdCardMimeType(fileType);
       setIdCardError(null);
     }
   };
@@ -140,6 +159,8 @@ export default function LoginScreen() {
         consultationFee: Number(consultationFee),
         qualification: qualification.trim(),
         bio: bio.trim() || undefined,
+        idCardUri: idCardUri || undefined,
+        idCardMimeType: idCardMimeType || undefined,
       };
       registration = { role, profile };
     }
