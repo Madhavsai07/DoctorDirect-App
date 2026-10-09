@@ -4,6 +4,7 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/slices/authSlice';
 import { clearNotifications } from '../../store/slices/notificationSlice';
 import { colors, spacing, typography } from '../../theme';
+import { formatFee } from '../../types/doctor';
 import { ScreenHeader, Card, Badge, Button, ErrorView } from '../../components/common';
 import apiClient from '../../services/api/apiClient';
 
@@ -105,7 +106,7 @@ export default function DoctorProfileScreen() {
             <View style={styles.divider} />
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Consultation Rate</Text>
-              <Text style={styles.infoFee}>${profile.consultation_fee} / session</Text>
+              <Text style={styles.infoFee}>{formatFee(profile.consultation_fee)} / session</Text>
             </View>
             <View style={styles.divider} />
             <View style={styles.infoRow}>

@@ -80,6 +80,20 @@ All database commands are run from the `backend/` directory:
 | `npm run migrate:reset` | Reset database | Rolls back applied migrations and re-applies all migrations from scratch |
 | `npm run seed` | Insert specialization catalog | Adds available specialties without creating demo users or records |
 
+`npm run migrate:status` currently creates `_migrations` if it does not exist.
+It is therefore not a strictly read-only inspection command. For an audit,
+query the migration ledger directly in a read-only transaction.
+
+### Remote PostgreSQL TLS
+
+The backend enables TLS for remote PostgreSQL URLs, including when running in
+development. Certificate verification remains enabled. If the database uses a
+private or self-signed CA, set `DATABASE_SSL_CA` to the local path of the
+provider's trusted root certificate. Keep that certificate outside the
+repository when appropriate; never disable certificate verification to bypass
+a TLS error. Local loopback PostgreSQL connections remain unencrypted unless
+`DATABASE_SSL=true` is explicitly configured.
+
 ### Quick Start Example
 
 ```bash

@@ -19,6 +19,7 @@ import {
 } from '../../store/slices/adminSlice';
 import { AdminStackParamList } from '../../navigation/types';
 import { adminService, VerificationStatus } from '../../services/admin/adminService';
+import { formatFee } from '../../types/doctor';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
 import { getApiErrorMessage } from '../../utils/apiError';
@@ -299,7 +300,7 @@ export default function AdminDoctorDetailScreen() {
             <View style={styles.gridCol}>
               <Text style={styles.infoFieldLabel}>Consultation Fee</Text>
               <Text style={[styles.credentialHighlight, { color: colors.secondary }]}>
-                ₹{doctor.consultation_fee}
+                {formatFee(doctor.consultation_fee)}
               </Text>
             </View>
 

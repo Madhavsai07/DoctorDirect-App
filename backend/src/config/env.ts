@@ -3,6 +3,17 @@ import dotenv from 'dotenv';
 // Load .env before any other module reads process.env
 dotenv.config();
 
+const databaseUrl = process.env.DATABASE_URL;
+const databaseSslSetting = process.env.DATABASE_SSL;
+
+if (databaseSslSetting && !['true', 'false'].includes(databaseSslSetting)) {
+  throw new Error('DATABASE_SSL must be set to "true" or "false".');
+}
+
+if (process.env.NODE_ENV === 'production' && !databaseUrl) {
+  throw new Error('DATABASE_URL is required in production.');
+}
+
 /**
  * Centralized environment configuration.
  *
@@ -16,7 +27,9 @@ const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
 
   // ── Added in the Database milestone ──────────────────────────────────────
-  databaseUrl: process.env.DATABASE_URL,
+  databaseUrl,
+  databaseSslEnabled: databaseSslSetting === 'true',
+  databaseSslCa: process.env.DATABASE_SSL_CA,
 
   // ── Added in the Authentication milestone ────────────────────────────────
   supabaseUrl: process.env.SUPABASE_URL,

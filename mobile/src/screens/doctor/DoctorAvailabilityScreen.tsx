@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Modal,
   RefreshControl,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
 } from 'react-native';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
@@ -15,7 +17,6 @@ import {
   Card,
   Badge,
   Button,
-  Input,
   LoadingIndicator,
   ErrorView,
   EmptyState,
@@ -42,6 +43,161 @@ import {
 } from '../../types/doctor';
 
 const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WHEEL_ROW_HEIGHT = 36;
+const WHEEL_VISIBLE_HEIGHT = WHEEL_ROW_HEIGHT * 3;
+
+function toTimeParts(value: string): { hour: number; minute: number; period: 'AM' | 'PM' } {
+  const [hour24, minute] = value.split(':').map(Number);
+  return {
+    hour: hour24 % 12 || 12,
+    minute,
+    period: hour24 >= 12 ? 'PM' : 'AM',
+  };
+}
+
+function fromTimeParts(hour: number, minute: number, period: 'AM' | 'PM'): string {
+  const hour24 = (hour % 12) + (period === 'PM' ? 12 : 0);
+  return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+interface TimeWheelColumnProps {
+  label: string;
+  values: string[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+}
+
+function TimeWheelColumn({ label, values, selectedIndex, onSelect }: TimeWheelColumnProps) {
+  const scrollRef = React.useRef<ScrollView>(null);
+  const initialSelectedIndex = React.useRef(selectedIndex);
+  const lastSelectedIndex = React.useRef(selectedIndex);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      y: initialSelectedIndex.current * WHEEL_ROW_HEIGHT,
+      animated: false,
+    });
+  }, []);
+
+  const selectOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const index = Math.max(0, Math.min(
+      values.length - 1,
+      Math.round(event.nativeEvent.contentOffset.y / WHEEL_ROW_HEIGHT)
+    ));
+    if (index === lastSelectedIndex.current) return;
+    lastSelectedIndex.current = index;
+    onSelect(index);
+  };
+
+  return (
+    <View style={modalStyles.wheelColumn}>
+      <Text style={modalStyles.wheelLabel}>{label}</Text>
+      <View style={modalStyles.wheelViewport}>
+        <View pointerEvents="none" style={modalStyles.wheelSelection} />
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          snapToInterval={WHEEL_ROW_HEIGHT}
+          decelerationRate="fast"
+          scrollEventThrottle={16}
+          contentContainerStyle={modalStyles.wheelContent}
+          onScroll={selectOffset}
+          onMomentumScrollEnd={selectOffset}
+          onScrollEndDrag={selectOffset}
+        >
+          {values.map((value, index) => (
+            <TouchableOpacity
+              key={value}
+              accessibilityRole="button"
+              onPress={() => {
+                scrollRef.current?.scrollTo({ y: index * WHEEL_ROW_HEIGHT, animated: true });
+                lastSelectedIndex.current = index;
+                onSelect(index);
+              }}
+              style={modalStyles.wheelItem}
+            >
+              <Text style={[
+                modalStyles.wheelItemText,
+                selectedIndex === index && modalStyles.wheelItemTextSelected,
+              ]}>
+                {value}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
+interface TimeRangePickerProps {
+  startTime: string;
+  endTime: string;
+  onStartTimeChange: (time: string) => void;
+  onEndTimeChange: (time: string) => void;
+}
+
+function TimeRangePicker({
+  startTime,
+  endTime,
+  onStartTimeChange,
+  onEndTimeChange,
+}: TimeRangePickerProps) {
+  const [activeField, setActiveField] = useState<'start' | 'end'>('start');
+  const time = activeField === 'start' ? startTime : endTime;
+  const onTimeChange = activeField === 'start' ? onStartTimeChange : onEndTimeChange;
+  const parts = toTimeParts(time);
+
+  const updateTime = (hour: number, minute: number, period: 'AM' | 'PM') => {
+    onTimeChange(fromTimeParts(hour, minute, period));
+  };
+
+  return (
+    <View style={modalStyles.timeRange}>
+      <View style={modalStyles.timeFieldRow}>
+        {([
+          { key: 'start', label: 'Start time', value: startTime },
+          { key: 'end', label: 'End time', value: endTime },
+        ] as const).map((field) => (
+          <TouchableOpacity
+            key={field.key}
+            accessibilityRole="button"
+            accessibilityLabel={`${field.label}, ${formatTime(field.value)}`}
+            onPress={() => setActiveField(field.key)}
+            style={[
+              modalStyles.timeField,
+              activeField === field.key && modalStyles.timeFieldActive,
+            ]}
+          >
+            <Text style={modalStyles.timeFieldLabel}>{field.label}</Text>
+            <Text style={modalStyles.timeFieldValue}>{formatTime(field.value)}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={modalStyles.label}>Scroll to choose {activeField} time</Text>
+      <View style={modalStyles.wheelRow} key={activeField}>
+        <TimeWheelColumn
+          label="Hour"
+          values={Array.from({ length: 12 }, (_, index) => String(index + 1))}
+          selectedIndex={parts.hour - 1}
+          onSelect={(index) => updateTime(index + 1, parts.minute, parts.period)}
+        />
+        <TimeWheelColumn
+          label="Minute"
+          values={Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'))}
+          selectedIndex={parts.minute}
+          onSelect={(minute) => updateTime(parts.hour, minute, parts.period)}
+        />
+        <TimeWheelColumn
+          label="AM / PM"
+          values={['AM', 'PM']}
+          selectedIndex={parts.period === 'AM' ? 0 : 1}
+          onSelect={(index) => updateTime(parts.hour, parts.minute, index === 0 ? 'AM' : 'PM')}
+        />
+      </View>
+    </View>
+  );
+}
 
 function localDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -116,8 +272,12 @@ function AddWindowModal({ visible, onClose, onSave, isSaving, initialWindow }: A
             ))}
           </ScrollView>
 
-          <Input label="Start Time (HH:MM)" value={startTime} onChangeText={setStartTime} placeholder="09:00" containerStyle={modalStyles.input} />
-          <Input label="End Time (HH:MM)" value={endTime} onChangeText={setEndTime} placeholder="12:00" containerStyle={modalStyles.input} />
+          <TimeRangePicker
+            startTime={startTime}
+            endTime={endTime}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+          />
           <Text style={modalStyles.label}>Slot Duration</Text>
           <View style={modalStyles.durationRow}>
             {[15, 30, 45, 60].map((minutes) => (
@@ -175,7 +335,21 @@ const modalStyles = StyleSheet.create({
   dayPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   dayPillText: { fontSize: 12, color: colors.text.secondary, fontWeight: typography.weights.medium },
   dayPillActiveText: { color: '#ffffff', fontWeight: typography.weights.bold },
-  input: { marginBottom: spacing.sm },
+  timeRange: { marginBottom: spacing.md },
+  timeFieldRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+  timeField: { flex: 1, padding: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: spacing.borderRadius.md, backgroundColor: colors.surface },
+  timeFieldActive: { borderColor: colors.primary, borderWidth: 2 },
+  timeFieldLabel: { color: colors.text.secondary, fontSize: typography.sizes.xs },
+  timeFieldValue: { color: colors.text.primary, fontSize: typography.sizes.md, fontWeight: typography.weights.bold, marginTop: 2 },
+  wheelRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  wheelColumn: { flex: 1, alignItems: 'center', maxWidth: 112 },
+  wheelLabel: { color: colors.text.secondary, fontSize: 10, fontWeight: typography.weights.semiBold, marginBottom: spacing.xs },
+  wheelViewport: { height: WHEEL_VISIBLE_HEIGHT, width: '100%', overflow: 'hidden', borderRadius: spacing.borderRadius.md },
+  wheelContent: { paddingVertical: WHEEL_ROW_HEIGHT },
+  wheelSelection: { position: 'absolute', top: WHEEL_ROW_HEIGHT, left: 0, right: 0, height: WHEEL_ROW_HEIGHT, borderRadius: spacing.borderRadius.sm, backgroundColor: colors.primarySubtle },
+  wheelItem: { height: WHEEL_ROW_HEIGHT, alignItems: 'center', justifyContent: 'center' },
+  wheelItemText: { color: colors.text.secondary, fontSize: typography.sizes.sm },
+  wheelItemTextSelected: { color: colors.primary, fontWeight: typography.weights.bold, fontSize: typography.sizes.md },
   actions: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   btn: { flex: 1 },
 });
@@ -244,8 +418,12 @@ function DateOverrideModal({
               </TouchableOpacity>
             </View>
           ))}
-          <Input label="Start Time (HH:MM)" value={startTime} onChangeText={setStartTime} containerStyle={modalStyles.input} />
-          <Input label="End Time (HH:MM)" value={endTime} onChangeText={setEndTime} containerStyle={modalStyles.input} />
+          <TimeRangePicker
+            startTime={startTime}
+            endTime={endTime}
+            onStartTimeChange={setStartTime}
+            onEndTimeChange={setEndTime}
+          />
           <Text style={modalStyles.label}>Slot Duration</Text>
           <View style={modalStyles.durationRow}>
             {[15, 30, 45, 60].map((minutes) => (
@@ -835,8 +1013,12 @@ export default function DoctorAvailabilityScreen() {
           <View style={modalStyles.sheet}>
             <Text style={modalStyles.title}>Edit slot time</Text>
             <Text style={modalStyles.label}>Only unbooked slots can be changed.</Text>
-            <Input label="Start Time (HH:MM)" value={slotStart} onChangeText={setSlotStart} containerStyle={modalStyles.input} />
-            <Input label="End Time (HH:MM)" value={slotEnd} onChangeText={setSlotEnd} containerStyle={modalStyles.input} />
+            <TimeRangePicker
+              startTime={slotStart}
+              endTime={slotEnd}
+              onStartTimeChange={setSlotStart}
+              onEndTimeChange={setSlotEnd}
+            />
             <View style={modalStyles.actions}>
               <Button title="Cancel" onPress={() => setEditingSlot(null)} variant="secondary" size="md" style={modalStyles.btn} />
               <Button title="Save" onPress={saveSlotEdit} variant="primary" size="md" style={modalStyles.btn} />

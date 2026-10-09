@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Pool, QueryResult, QueryResultRow } from 'pg';
 import config from '../config/env';
 
@@ -7,12 +8,34 @@ import config from '../config/env';
  * Configured via DATABASE_URL environment variable.
  * Reuses connection pool across repositories and health checks.
  */
+const isLoopbackDatabase = (() => {
+  if (!config.databaseUrl) return true;
+
+  try {
+    const hostname = new URL(config.databaseUrl).hostname.replace(/^\[|\]$/g, '');
+    return ['localhost', '127.0.0.1', '::1'].includes(hostname);
+  } catch {
+    return false;
+  }
+})();
+
 const useSsl =
-  config.nodeEnv === 'production' || process.env.DATABASE_SSL === 'true';
+  config.nodeEnv === 'production' ||
+  config.databaseSslEnabled ||
+  !isLoopbackDatabase;
+
+const ssl = useSsl
+  ? {
+      rejectUnauthorized: true,
+      ...(config.databaseSslCa
+        ? { ca: fs.readFileSync(config.databaseSslCa, 'utf8') }
+        : {}),
+    }
+  : undefined;
 
 export const pool = new Pool({
   connectionString: config.databaseUrl,
-  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+  ssl,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

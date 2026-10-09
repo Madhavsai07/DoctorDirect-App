@@ -38,6 +38,7 @@ export default function LoginScreen() {
   // Form field state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -178,6 +179,7 @@ export default function LoginScreen() {
 
   const handleToggleMode = () => {
     setIsRegistering(!isRegistering);
+    setIsPasswordVisible(false);
     clearErrors();
   };
 
@@ -420,18 +422,32 @@ export default function LoginScreen() {
             autoCapitalize="none"
           />
 
-          <Input
-            label="Password *"
-            placeholder={isRegistering ? 'At least 8 characters' : 'Enter your password'}
-            value={password}
-            onChangeText={(text) => {
-              setPassword(text);
-              if (hasSubmitted) setErrors((prev) => ({ ...prev, password: validatePassword(text, isRegistering) }));
-            }}
-            onBlur={() => setErrors((prev) => ({ ...prev, password: validatePassword(password, isRegistering) }))}
-            error={errors.password}
-            secureTextEntry
-          />
+          <View style={styles.passwordField}>
+            <Input
+              label="Password *"
+              placeholder={isRegistering ? 'At least 8 characters' : 'Enter your password'}
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (hasSubmitted) setErrors((prev) => ({ ...prev, password: validatePassword(text, isRegistering) }));
+              }}
+              onBlur={() => setErrors((prev) => ({ ...prev, password: validatePassword(password, isRegistering) }))}
+              error={errors.password}
+              secureTextEntry={!isPasswordVisible}
+              inputStyle={styles.passwordInput}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={isPasswordVisible ? 'Hide password' : 'Show password'}
+              onPress={() => setIsPasswordVisible((visible) => !visible)}
+              style={styles.passwordVisibilityButton}
+              hitSlop={8}
+            >
+              <Text style={styles.passwordVisibilityText}>
+                {isPasswordVisible ? 'Hide' : 'Show'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Button
@@ -466,6 +482,25 @@ const styles = StyleSheet.create({
   },
   formCard: {
     marginBottom: spacing.xl,
+  },
+  passwordField: {
+    position: 'relative',
+  },
+  passwordInput: {
+    paddingRight: 76,
+  },
+  passwordVisibilityButton: {
+    position: 'absolute',
+    right: spacing.md,
+    top: 21,
+    minHeight: 52,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
+  },
+  passwordVisibilityText: {
+    color: colors.primary,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semiBold,
   },
   headerBlock: {
     marginBottom: spacing.lg,

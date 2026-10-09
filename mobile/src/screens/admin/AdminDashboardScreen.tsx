@@ -23,6 +23,7 @@ import {
 import { logoutUser } from '../../store/slices/authSlice';
 import { AdminStackParamList } from '../../navigation/types';
 import { VerificationStatus, AdminDoctor } from '../../services/admin/adminService';
+import { formatFee } from '../../types/doctor';
 import { colors, spacing, typography } from '../../theme';
 import { showAlert } from '../../utils/alert';
 import {
@@ -356,7 +357,7 @@ export default function AdminDashboardScreen() {
                   </View>
                   <View style={styles.detailItem}>
                     <Text style={styles.detailLabel}>Fee:</Text>
-                    <Text style={styles.detailValue}>${doctor.consultation_fee}</Text>
+                    <Text style={styles.detailValue}>{formatFee(doctor.consultation_fee)}</Text>
                   </View>
                   {doctor.email && (
                     <View style={[styles.detailItem, styles.detailItemEmail]}>
