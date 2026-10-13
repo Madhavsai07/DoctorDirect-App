@@ -24,11 +24,17 @@ const useSsl =
   config.databaseSslEnabled ||
   !isLoopbackDatabase;
 
+const certificateAuthority = config.databaseSslCa
+  ? fs.readFileSync(config.databaseSslCa, 'utf8')
+  : config.databaseSslCaBase64
+    ? Buffer.from(config.databaseSslCaBase64, 'base64').toString('utf8')
+    : undefined;
+
 const ssl = useSsl
   ? {
       rejectUnauthorized: true,
-      ...(config.databaseSslCa
-        ? { ca: fs.readFileSync(config.databaseSslCa, 'utf8') }
+      ...(certificateAuthority
+        ? { ca: certificateAuthority }
         : {}),
     }
   : undefined;

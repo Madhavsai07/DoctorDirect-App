@@ -30,6 +30,8 @@ const config = {
   databaseUrl,
   databaseSslEnabled: databaseSslSetting === 'true',
   databaseSslCa: process.env.DATABASE_SSL_CA,
+  // For hosts such as Render, where a local CA file cannot be mounted.
+  databaseSslCaBase64: process.env.DATABASE_SSL_CA_BASE64,
 
   // ── Added in the Authentication milestone ────────────────────────────────
   supabaseUrl: process.env.SUPABASE_URL,
