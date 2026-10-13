@@ -1,8 +1,25 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { consultationService } from '../services/consultation.service';
+import config from '../config/env';
 
 const consultationRouter = Router();
+
+/** Returns ephemeral call transport configuration only to a consultation participant. */
+consultationRouter.get('/video/:consultationId/ice-servers', requireAuth, async (req, res, next) => {
+  try {
+    const consultation = await consultationService.getConsultationById(req.params.consultationId, req.user!);
+    if (consultation.status !== 'in_progress' || consultation.appointment_status !== 'in_progress') {
+      res.status(409).json({ error: 'This consultation is not available for a video call.' }); return;
+    }
+    const iceServers: Array<{ urls: string[]; username?: string; credential?: string }> = [];
+    if (config.webrtcStunUrls.length) iceServers.push({ urls: config.webrtcStunUrls });
+    if (config.webrtcTurnUrls.length && config.webrtcTurnUsername && config.webrtcTurnCredential) {
+      iceServers.push({ urls: config.webrtcTurnUrls, username: config.webrtcTurnUsername, credential: config.webrtcTurnCredential });
+    }
+    res.json({ iceServers });
+  } catch (error) { next(error); }
+});
 
 /**
  * POST /api/v1/consultations

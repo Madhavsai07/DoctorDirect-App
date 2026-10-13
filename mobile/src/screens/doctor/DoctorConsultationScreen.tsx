@@ -28,11 +28,13 @@ import {
 } from '../../store/slices/consultationSlice';
 import { loadDoctorAppointments } from '../../store/slices/appointmentSlice';
 import { DoctorPrescriptionEditor } from '../../components/prescription';
+import { formatTime } from '../../types/doctor';
 
 type Props = NativeStackScreenProps<DoctorAppointmentStackParamList, 'DoctorConsultation'>;
 
 export default function DoctorConsultationScreen({ route, navigation }: Props) {
   const { appointmentId } = route.params;
+  const showDocumentation = route.params.showDocumentation === true;
   const dispatch = useAppDispatch();
   const {
     activeConsultation,
@@ -136,6 +138,33 @@ export default function DoctorConsultationScreen({ route, navigation }: Props) {
     );
   }
 
+  // The initial workspace is deliberately call-first. Clinical documentation is
+  // opened only after the doctor ends/returns from the call.
+  if (!showDocumentation) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.navBar}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <AppIcon name="back" size={20} color={colors.text.primary} /><Text style={styles.backText}>Appointments</Text>
+          </TouchableOpacity>
+          <Badge label={activeConsultation?.status === 'completed' ? 'Finalized' : 'In Progress'} variant={activeConsultation?.status === 'completed' ? 'success' : 'info'} size="sm" />
+        </View>
+        <Text style={styles.screenTitle}>Consultation ready</Text>
+        <Text style={styles.screenSubtitle}>Review appointment details, then join the private video consultation.</Text>
+        {activeConsultation && <Card variant="elevated" padding="lg" style={styles.patientCard}>
+          <Text style={styles.patientName}>{activeConsultation.patientFullName}</Text>
+          <Text style={styles.patientMeta}>{activeConsultation.patientGender || 'Gender unspecified'}{activeConsultation.patientAge ? ` · ${activeConsultation.patientAge} yrs` : ''}</Text>
+          <View style={styles.infoDivider} />
+          <View style={styles.infoRow}><AppIcon name="calendar" size={14} color={colors.secondary} /><Text style={styles.infoLabel}>Scheduled:</Text><Text style={styles.infoValue}>{activeConsultation.slotDate} · {formatTime(activeConsultation.slotStartTime)} – {formatTime(activeConsultation.slotEndTime)}</Text></View>
+          <View style={styles.infoRow}><AppIcon name="info" size={14} color={colors.text.secondary} /><Text style={styles.infoLabel}>Status:</Text><Text style={styles.infoValue}>{activeConsultation.appointmentStatus.replace('_', ' ')}</Text></View>
+          {activeConsultation.reasonForVisit ? <View style={styles.infoRow}><AppIcon name="medical" size={14} color={colors.text.secondary} /><Text style={styles.infoLabel}>Reason:</Text><Text style={styles.infoValue}>{activeConsultation.reasonForVisit}</Text></View> : null}
+        </Card>}
+        {activeConsultation?.status !== 'completed' && <Button title="Start / Join Video Call" onPress={() => navigation.navigate('VideoCall', { consultationId: activeConsultation!.id, appointmentId, returnToDocumentation: true })} size="lg" />}
+        <Button title="Open Documentation" onPress={() => navigation.replace('DoctorConsultation', { appointmentId, showDocumentation: true })} variant="outline" size="md" style={{ marginTop: spacing.md }} />
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Top Navigation Bar */}
@@ -160,6 +189,10 @@ export default function DoctorConsultationScreen({ route, navigation }: Props) {
           ? 'This consultation is complete and archived as an official visit record.'
           : 'Record clinical observations, diagnosis, treatment, and prescription.'}
       </Text>
+
+      {activeConsultation && !isCompleted && (
+        <Button title="Rejoin Video Call" onPress={() => navigation.navigate('VideoCall', { consultationId: activeConsultation.id, appointmentId, returnToDocumentation: true })} style={{ marginBottom: spacing.lg }} />
+      )}
 
       {/* Error & Feedback Banners */}
       {(error || validationError) && (
@@ -217,7 +250,7 @@ export default function DoctorConsultationScreen({ route, navigation }: Props) {
             <AppIcon name="calendar" size={14} color={colors.secondary} />
             <Text style={styles.infoLabel}>Scheduled:</Text>
             <Text style={styles.infoValue}>
-              {activeConsultation.slotDate} ({activeConsultation.slotStartTime.slice(0, 5)} - {activeConsultation.slotEndTime.slice(0, 5)})
+              {activeConsultation.slotDate} ({formatTime(activeConsultation.slotStartTime)} - {formatTime(activeConsultation.slotEndTime)})
             </Text>
           </View>
 

@@ -16,6 +16,7 @@ import PatientDoctorsScreen from '../screens/patient/PatientDoctorsScreen';
 import DoctorDetailScreen from '../screens/patient/DoctorDetailScreen';
 import PatientAppointmentsScreen from '../screens/patient/PatientAppointmentsScreen';
 import PatientConsultationScreen from '../screens/patient/PatientConsultationScreen';
+import VideoCallScreen from '../screens/consultation/VideoCallScreen';
 import PatientProfileScreen from '../screens/patient/PatientProfileScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import { useAppSelector } from '../store/hooks';
@@ -47,6 +48,7 @@ function PatientAppointmentStackNavigator() {
     <AppointmentStack.Navigator screenOptions={{ headerShown: false }}>
       <AppointmentStack.Screen name="AppointmentList" component={PatientAppointmentsScreen} />
       <AppointmentStack.Screen name="PatientConsultation" component={PatientConsultationScreen} />
+      <AppointmentStack.Screen name="VideoCall" component={VideoCallScreen} />
     </AppointmentStack.Navigator>
   );
 }

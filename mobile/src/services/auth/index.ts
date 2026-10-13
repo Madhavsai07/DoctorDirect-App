@@ -139,12 +139,26 @@ async function activateSession(session: Session): Promise<AuthBundle> {
 	return fetchApplicationUser(session.user);
 }
 
+async function refreshAccessToken(): Promise<string | null> {
+	const { data, error } = await requireSupabase().auth.refreshSession();
+	if (error) throw new Error('Your session expired. Please sign in again.');
+	return data.session?.access_token ?? null;
+}
+
 export const authService = {
 	async getAccessToken(): Promise<string | null> {
-		const { data, error } = await requireSupabase().auth.getSession();
+		const client = requireSupabase();
+		const { data, error } = await client.auth.getSession();
 		if (error) throw error;
-		return data.session?.access_token ?? null;
+		const session = data.session;
+		if (!session) return null;
+		if (session.expires_at && session.expires_at * 1000 <= Date.now() + 30_000) {
+			return refreshAccessToken();
+		}
+		return session.access_token;
 	},
+
+	refreshAccessToken,
 
 	async restoreSession(): Promise<AuthBundle | null> {
 		const { data, error } = await requireSupabase().auth.getSession();

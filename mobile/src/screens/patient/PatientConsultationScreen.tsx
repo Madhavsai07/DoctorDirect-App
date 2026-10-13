@@ -20,6 +20,7 @@ import {
 import { useAppDispatch, useAppSelector } from '../../hooks';
 import { loadConsultationByAppointment } from '../../store/slices/consultationSlice';
 import { PatientPrescriptionView } from '../../components/prescription';
+import { formatTime } from '../../types/doctor';
 
 type Props = NativeStackScreenProps<PatientAppointmentStackParamList, 'PatientConsultation'>;
 
@@ -77,6 +78,10 @@ export default function PatientConsultationScreen({ route, navigation }: Props) 
         Official clinical notes and prescription from your consultation.
       </Text>
 
+      {activeConsultation?.status === 'in_progress' && (
+        <Button title="Join Video Visit" onPress={() => navigation.navigate('VideoCall', { consultationId: activeConsultation.id })} style={{ marginBottom: spacing.lg }} />
+      )}
+
       {/* Doctor & Appointment Header Card */}
       {activeConsultation && (
         <Card variant="elevated" padding="lg" style={styles.doctorCard}>
@@ -107,7 +112,7 @@ export default function PatientConsultationScreen({ route, navigation }: Props) 
             <AppIcon name="calendar" size={14} color={colors.primary} />
             <Text style={styles.infoLabel}>Date & Time:</Text>
             <Text style={styles.infoValue}>
-              {activeConsultation.slotDate} ({activeConsultation.slotStartTime.slice(0, 5)} - {activeConsultation.slotEndTime.slice(0, 5)})
+              {activeConsultation.slotDate} ({formatTime(activeConsultation.slotStartTime)} - {formatTime(activeConsultation.slotEndTime)})
             </Text>
           </View>
 

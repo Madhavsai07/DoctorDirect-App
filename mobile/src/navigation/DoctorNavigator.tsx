@@ -10,6 +10,7 @@ import { AppIcon } from '../components/common';
 import DoctorDashboardScreen from '../screens/doctor/DoctorDashboardScreen';
 import DoctorAppointmentsScreen from '../screens/doctor/DoctorAppointmentsScreen';
 import DoctorConsultationScreen from '../screens/doctor/DoctorConsultationScreen';
+import VideoCallScreen from '../screens/consultation/VideoCallScreen';
 import DoctorAvailabilityScreen from '../screens/doctor/DoctorAvailabilityScreen';
 import DoctorProfileScreen from '../screens/doctor/DoctorProfileScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
@@ -31,6 +32,7 @@ function DoctorAppointmentsStackNavigator() {
         name="DoctorConsultation"
         component={DoctorConsultationScreen}
       />
+      <AppointmentStack.Screen name="VideoCall" component={VideoCallScreen} />
     </AppointmentStack.Navigator>
   );
 }

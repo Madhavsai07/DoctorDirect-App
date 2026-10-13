@@ -30,7 +30,7 @@ import {
   clearActionError,
 } from '../../store/slices/appointmentSlice';
 import { Appointment, AppointmentStatus } from '../../types/appointment';
-import { formatFee } from '../../types/doctor';
+import { formatFee, formatTime } from '../../types/doctor';
 
 type Props = NativeStackScreenProps<PatientAppointmentStackParamList, 'AppointmentList'>;
 
@@ -43,13 +43,7 @@ function formatDateTime(date: string, startTime: string, endTime: string): strin
     day: 'numeric',
     month: 'short',
   });
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const hh = h % 12 || 12;
-    return `${hh}:${m.toString().padStart(2, '0')} ${ampm}`;
-  };
-  return `${dateStr} · ${fmt(startTime)} – ${fmt(endTime)}`;
+  return `${dateStr} · ${formatTime(startTime)} – ${formatTime(endTime)}`;
 }
 
 function isUpcoming(date: string, startTime: string): boolean {

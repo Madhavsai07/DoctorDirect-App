@@ -16,6 +16,7 @@ export type PatientDoctorStackParamList = {
 export type PatientAppointmentStackParamList = {
   AppointmentList: undefined;
   PatientConsultation: { appointmentId: string };
+  VideoCall: { consultationId: string; appointmentId?: string; returnToDocumentation?: boolean };
 };
 
 export type DoctorTabParamList = {
@@ -29,7 +30,8 @@ export type DoctorTabParamList = {
 /** Stack nested inside the Doctor Appointments tab for consultation workspace */
 export type DoctorAppointmentStackParamList = {
   DoctorAppointmentsList: undefined;
-  DoctorConsultation: { appointmentId: string };
+  DoctorConsultation: { appointmentId: string; showDocumentation?: boolean };
+  VideoCall: { consultationId: string; appointmentId?: string; returnToDocumentation?: boolean };
 };
 
 export type AdminTabParamList = {

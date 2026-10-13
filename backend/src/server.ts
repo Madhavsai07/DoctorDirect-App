@@ -1,6 +1,8 @@
 import config from './config/env';
 import createApp from './app';
 import { notificationService } from './services/notification.service';
+import http from 'http';
+import { createSignalingServer } from './signaling';
 
 /**
  * DoctorDirect — Backend Server Entry Point
@@ -10,8 +12,12 @@ import { notificationService } from './services/notification.service';
  * in the Database milestone.
  */
 const app = createApp();
+if (config.trustProxy) app.set('trust proxy', 1);
+const server = http.createServer(app);
+const signaling = createSignalingServer();
+server.on('upgrade', (req, socket, head) => { if (!signaling.handleUpgrade(req, socket, head)) socket.destroy(); });
 
-app.listen(config.port, () => {
+server.listen(config.port, () => {
   console.log(
     `[DoctorDirect] Server running on port ${config.port} (${config.nodeEnv})`,
   );

@@ -24,7 +24,11 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      ["@config-plugins/react-native-webrtc", {
+        "cameraPermission": "Allow DoctorDirect to use your camera for a private consultation.",
+        "microphonePermission": "Allow DoctorDirect to use your microphone for a private consultation."
+      }]
     ]
   }
 }

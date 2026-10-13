@@ -85,6 +85,12 @@ interface AppointmentForScheduleBlock {
   slot_start_time: string;
 }
 
+function formatTime(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, '0')} ${period}`;
+}
+
 async function cancelAppointmentsForScheduleBlock(
   client: PoolClient,
   appointments: AppointmentForScheduleBlock[],
@@ -107,7 +113,7 @@ async function cancelAppointmentsForScheduleBlock(
       recipientUserId: appointment.patient_user_id,
       type: 'appointment_cancelled',
       title: 'Appointment cancelled — please rebook',
-      message: `Your appointment on ${appointment.slot_date} at ${appointment.slot_start_time.slice(0, 5)} was cancelled because the doctor blocked this time. Please book another available slot.`,
+      message: `Your appointment on ${appointment.slot_date} at ${formatTime(appointment.slot_start_time)} was cancelled because the doctor blocked this time. Please book another available slot.`,
       appointmentId: appointment.id,
       eventKey: `doctor-blocked-appointment:${appointment.id}`,
     }, client);

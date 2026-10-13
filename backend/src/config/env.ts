@@ -36,6 +36,15 @@ const config = {
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
 
+  // WebRTC media is peer-to-peer; this server only relays ephemeral signaling.
+  // Production deployments must terminate TLS before accepting WebSocket upgrades.
+  signalingPath: process.env.SIGNALING_PATH ?? '/api/v1/signaling',
+  trustProxy: process.env.TRUST_PROXY === 'true',
+  webrtcStunUrls: (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),
+  webrtcTurnUrls: (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),
+  webrtcTurnUsername: process.env.WEBRTC_TURN_USERNAME,
+  webrtcTurnCredential: process.env.WEBRTC_TURN_CREDENTIAL,
+
 } as const;
 
 export default config;

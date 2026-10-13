@@ -32,16 +32,11 @@ import {
   clearActionError,
 } from '../../store/slices/appointmentSlice';
 import { Appointment, AppointmentStatus } from '../../types/appointment';
+import { formatTime } from '../../types/doctor';
 
 type Props = NativeStackScreenProps<DoctorAppointmentStackParamList, 'DoctorAppointmentsList'>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatTime(t: string): string {
-  const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${ampm}`;
-}
 
 function formatDate(date: string): string {
   const d = new Date(date + 'T12:00:00');

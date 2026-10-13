@@ -166,7 +166,7 @@ export default function PatientPrescriptionView({
           <Text style={styles.verifiedText}>
             Verified by DoctorDirect • Signed on{' '}
             {prescription.signedAt
-              ? new Date(prescription.signedAt).toLocaleString()
+              ? new Date(prescription.signedAt).toLocaleString(undefined, { hour12: true })
               : new Date(prescription.updatedAt).toLocaleDateString()}
           </Text>
         </View>
