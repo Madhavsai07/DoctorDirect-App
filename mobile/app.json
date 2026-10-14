@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.doctordirect.app"
+      "bundleIdentifier": "com.doctordirect.app",
+      "bitcode": false
     },
     "android": {
       "package": "com.doctordirect.app",
@@ -18,17 +19,36 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK",
+        "android.permission.BLUETOOTH"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      ["@config-plugins/react-native-webrtc", {
-        "cameraPermission": "Allow DoctorDirect to use your camera for a private consultation.",
-        "microphonePermission": "Allow DoctorDirect to use your microphone for a private consultation."
-      }]
-    ]
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Allow DoctorDirect to use your camera for a private consultation.",
+          "microphonePermission": "Allow DoctorDirect to use your microphone for a private consultation."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4a4b6c92-6703-4000-89e8-071265df58d2"
+      }
+    },
+    "owner": "madhav07"
   }
 }
