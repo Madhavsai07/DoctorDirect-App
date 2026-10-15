@@ -8,3 +8,4 @@ export * from './EmptyState';
 export * from './ScreenHeader';
 export * from './AppIcon';
 export * from './DatePickerInput';
+export * from './InAppNotificationBanner';

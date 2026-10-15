@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { store } from './src/store';
+import { useAppSelector } from './src/store/hooks';
 import { initializeAuth, refreshCurrentUser, sessionEnded } from './src/store/slices/authSlice';
 import { clearDoctorState } from './src/store/slices/doctorSlice';
 import { clearAppointmentState } from './src/store/slices/appointmentSlice';
@@ -12,7 +13,36 @@ import { clearConsultationState } from './src/store/slices/consultationSlice';
 import { clearPrescriptionState } from './src/store/slices/prescriptionSlice';
 import { clearNotifications } from './src/store/slices/notificationSlice';
 import { supabase } from './src/services/auth/supabaseClient';
+import { realtimeNotificationManager } from './src/services/notifications/realtimeNotificationManager';
+import { navigationRef } from './src/navigation/navigationRef';
+import { InAppNotificationBanner } from './src/components/common';
 import RootNavigator from './src/navigation/RootNavigator';
+
+function AppContent() {
+  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      realtimeNotificationManager.start();
+    } else {
+      realtimeNotificationManager.stop();
+    }
+
+    return () => {
+      realtimeNotificationManager.stop();
+    };
+  }, [isAuthenticated]);
+
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer ref={navigationRef}>
+        <RootNavigator />
+        <InAppNotificationBanner />
+        <StatusBar style="auto" />
+      </NavigationContainer>
+    </SafeAreaProvider>
+  );
+}
 
 /**
  * DoctorDirect App Root
@@ -20,7 +50,8 @@ import RootNavigator from './src/navigation/RootNavigator';
  * Wraps the app with:
  * 1. Redux Provider (central state store)
  * 2. SafeAreaProvider (mobile device insets)
- * 3. NavigationContainer (role-protected navigation stacks)
+ * 3. NavigationContainer (role-protected navigation stacks with global navigationRef)
+ * 4. Real-time in-app notification pop-down banner & sync manager
  */
 export default function App() {
   useEffect(() => {
@@ -49,12 +80,7 @@ export default function App() {
 
   return (
     <Provider store={store}>
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <RootNavigator />
-          <StatusBar style="auto" />
-        </NavigationContainer>
-      </SafeAreaProvider>
+      <AppContent />
     </Provider>
   );
 }

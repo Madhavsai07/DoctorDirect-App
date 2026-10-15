@@ -1,4 +1,6 @@
 import { pool } from '../db/pool';
+import { notificationRepository } from './notification.repository';
+import { notificationSocketServer } from '../notifications-socket';
 
 export interface DbUser {
   id: string;
@@ -173,17 +175,20 @@ export class UserRepository {
         "SELECT id FROM users WHERE role = 'admin' AND is_active = TRUE"
       );
       for (const admin of admins.rows) {
-        await client.query(
-          `INSERT INTO notifications (recipient_user_id, type, title, message, doctor_id, event_key, is_read)
-           VALUES ($1, 'doctor_verification_alert', 'New Doctor Verification Required', $2, $3, $4, FALSE)
-           ON CONFLICT (event_key) DO NOTHING`,
-          [
-            admin.id,
-            `Dr. ${input.firstName} ${input.lastName} (${input.specializationName}) has registered and submitted credentials for review.`,
+        const adminNotif = await notificationRepository.createOnce(
+          {
+            recipientUserId: admin.id,
+            type: 'doctor_verification_alert',
+            title: 'New Doctor Verification Required',
+            message: `Dr. ${input.firstName} ${input.lastName} (${input.specializationName}) has registered and submitted credentials for review.`,
             doctorId,
-            `doc_reg_${doctorId}_${admin.id}`,
-          ]
+            eventKey: `doc_reg_${doctorId}_${admin.id}`,
+          },
+          client
         );
+        if (adminNotif) {
+          setImmediate(() => notificationSocketServer.broadcastNotification(adminNotif));
+        }
       }
 
       await client.query('COMMIT');

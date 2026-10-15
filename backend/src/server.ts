@@ -3,6 +3,7 @@ import createApp from './app';
 import { notificationService } from './services/notification.service';
 import http from 'http';
 import { createSignalingServer } from './signaling';
+import { notificationSocketServer } from './notifications-socket';
 
 /**
  * DoctorDirect — Backend Server Entry Point
@@ -15,7 +16,11 @@ const app = createApp();
 if (config.trustProxy) app.set('trust proxy', 1);
 const server = http.createServer(app);
 const signaling = createSignalingServer();
-server.on('upgrade', (req, socket, head) => { if (!signaling.handleUpgrade(req, socket, head)) socket.destroy(); });
+server.on('upgrade', (req, socket, head) => {
+  if (signaling.handleUpgrade(req, socket, head)) return;
+  if (notificationSocketServer.handleUpgrade(req, socket, head)) return;
+  socket.destroy();
+});
 
 server.listen(config.port, () => {
   console.log(

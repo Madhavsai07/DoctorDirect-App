@@ -41,6 +41,7 @@ const config = {
   // WebRTC media is peer-to-peer; this server only relays ephemeral signaling.
   // Production deployments must terminate TLS before accepting WebSocket upgrades.
   signalingPath: process.env.SIGNALING_PATH ?? '/api/v1/signaling',
+  notificationWsPath: process.env.NOTIFICATION_WS_PATH ?? '/api/v1/notifications/stream',
   trustProxy: process.env.TRUST_PROXY === 'true',
   webrtcStunUrls: (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),
   webrtcTurnUrls: (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),

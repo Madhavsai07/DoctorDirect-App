@@ -7,6 +7,8 @@ import type { Notification } from '../../types/notification';
 import { colors, spacing, typography } from '../../theme';
 import { AppIcon, EmptyState, ErrorView, LoadingIndicator, ScreenHeader } from '../../components/common';
 
+import { navigateFromNotification } from '../../navigation/navigationRef';
+
 function formatTime(value: string): string {
   const date = new Date(value);
   const diff = Date.now() - date.getTime();
@@ -31,28 +33,7 @@ export default function NotificationsScreen() {
 
   const openNotification = (item: Notification) => {
     if (!item.isRead) dispatch(markNotificationRead(item.id));
-    if (!item.appointmentId) return;
-
-    // Appointment updates are created before a consultation exists. Opening the
-    // consultation screen for those notifications results in a "not found" error.
-    // Only clinical-record notifications carry a consultation id and belong there.
-    const opensConsultation = Boolean(item.consultationId) && [
-      'consultation_started',
-      'consultation_completed',
-      'prescription_finalized',
-    ].includes(item.type);
-
-    if (role === 'doctor') {
-      navigation.navigate('DoctorAppointments', {
-        screen: opensConsultation ? 'DoctorConsultation' : 'DoctorAppointmentsList',
-        ...(opensConsultation ? { params: { appointmentId: item.appointmentId } } : {}),
-      });
-    } else if (role === 'patient') {
-      navigation.navigate('Appointments', {
-        screen: opensConsultation ? 'PatientConsultation' : 'AppointmentList',
-        ...(opensConsultation ? { params: { appointmentId: item.appointmentId } } : {}),
-      });
-    }
+    navigateFromNotification(item, role);
   };
 
   const renderItem = ({ item }: { item: Notification }) => (

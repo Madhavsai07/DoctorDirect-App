@@ -5,6 +5,7 @@ import {
   NotificationType,
   notificationRepository,
 } from '../repositories/notification.repository';
+import { notificationSocketServer } from '../notifications-socket';
 
 export interface NotificationInput extends Omit<CreateNotificationDto, 'eventKey'> {
   /** A deterministic event identity, e.g. appointment-confirmed:<appointment UUID>. */
@@ -13,7 +14,17 @@ export interface NotificationInput extends Omit<CreateNotificationDto, 'eventKey
 
 export class NotificationService {
   async createOnce(input: NotificationInput, client?: PoolClient): Promise<DbNotification | null> {
-    return notificationRepository.createOnce(input, client);
+    const created = await notificationRepository.createOnce(input, client);
+    if (created) {
+      // If running inside an explicit database transaction, schedule the push
+      // right after current microtasks so that the transaction has committed.
+      if (client) {
+        setImmediate(() => notificationSocketServer.broadcastNotification(created));
+      } else {
+        notificationSocketServer.broadcastNotification(created);
+      }
+    }
+    return created;
   }
 
   async list(userId: string, rawLimit?: unknown, rawOffset?: unknown): Promise<DbNotification[]> {
@@ -31,11 +42,16 @@ export class NotificationService {
     if (!notification) {
       throw Object.assign(new Error('Notification not found'), { status: 404 });
     }
+    notificationSocketServer.broadcastRead(userId, id);
     return notification;
   }
 
   async markAllRead(userId: string): Promise<number> {
-    return notificationRepository.markAllRead(userId);
+    const count = await notificationRepository.markAllRead(userId);
+    if (count > 0) {
+      notificationSocketServer.broadcastReadAll(userId);
+    }
+    return count;
   }
 
   /** Creates one reminder per appointment/day; safe to call repeatedly. */
