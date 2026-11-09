@@ -1,8 +1,8 @@
 # DoctorDirect
 
-DoctorDirect is a mobile application for patient-doctor appointment management. It uses a React Native/Expo client, an Express/TypeScript API, PostgreSQL for application data, and Supabase Auth for user identity and sessions.
+DoctorDirect is a multi-platform healthcare application for connecting patients, doctors, and administrators. It provides separate web and mobile clients backed by a shared Express API, PostgreSQL database, and Supabase authentication.
 
-An independent React + Vite web application is available in `web/` alongside the existing mobile client. It uses Supabase browser authentication, backend-resolved role guards, and the existing APIs for supported patient, doctor, and admin workflows.
+The web application is built with React, TypeScript, and Vite. The mobile application uses React Native, Expo, and TypeScript. Both clients use the existing backend for supported workflows, while authorization and business rules remain enforced by the API.
 
 ## Current status
 
@@ -19,22 +19,22 @@ The repository contains the patient, doctor, and admin flows for account provisi
 
 ### Not currently implemented
 
-WebRTC video calling, audio transcription, AI-generated clinical notes, and offline synchronization are not implemented. Consultation records and doctor-authored prescriptions are separate existing flows; they do not depend on those features.
+The web application does not currently include video calling. Audio transcription, AI-generated clinical notes, and offline synchronization are not implemented. Consultation records and doctor-authored prescriptions are separate existing flows and do not depend on these features.
 
 ## Architecture
 
 ```text
-React Native / Expo app
-    ├── Supabase Auth sessions
-    └── REST requests with Supabase access token
-             ↓
-Express / TypeScript API
-    ├── Role and doctor-verification guards
-    ├── Services and repositories
-    └── PostgreSQL
+React + Vite web app ─────┐
+                          ├── Supabase Auth sessions and access tokens
+React Native / Expo app ──┘                     │
+                                               ▼
+                                     Express / TypeScript API
+                                      ├── Role and verification guards
+                                      ├── Services and repositories
+                                      └── PostgreSQL
 ```
 
-Doctor ID cards are uploaded to a private Supabase Storage bucket. The app uploads to an object path scoped to the authenticated user's ID; the backend creates temporary viewing URLs for administrators.
+Doctor ID cards are uploaded to a private Supabase Storage bucket under a path scoped to the authenticated user's ID. The backend creates temporary viewing URLs for administrators. Keep service-role credentials on the backend; never include them in either client.
 
 ## Scheduling behavior
 
@@ -48,9 +48,9 @@ Doctor ID cards are uploaded to a private Supabase Storage bucket. The app uploa
 
 | Area | Technology |
 | --- | --- |
-| Mobile | React Native, Expo, TypeScript |
-| Web (foundation) | React, TypeScript, Vite |
-| Navigation and state | React Navigation, Redux Toolkit |
+| Web client | React, TypeScript, Vite, React Router |
+| Mobile client | React Native, Expo, TypeScript |
+| State management | Redux Toolkit |
 | Authentication and private files | Supabase Auth and Supabase Storage |
 | API | Node.js, Express, TypeScript |
 | Persistence | PostgreSQL |
@@ -59,7 +59,7 @@ Doctor ID cards are uploaded to a private Supabase Storage bucket. The app uploa
 
 ```text
 mobile/                  React Native application
-web/                     Independent React + Vite web application
+web/                     React + Vite web application
 backend/src/             API routes, middleware, services, repositories
 backend/test-*.ts        Standalone backend integration checks
 database/migrations/     PostgreSQL migrations 001 through 012
@@ -70,16 +70,23 @@ docs/                    Project documents
 
 ## Setup
 
-Requirements: Node.js 18+, npm, PostgreSQL 14+, and a Supabase project with email/password authentication enabled.
+Requirements: Node.js, npm, PostgreSQL 14+, and a Supabase project with email/password authentication enabled. Use a Node.js version supported by the installed Vite and Expo toolchains.
 
-1. Install dependencies:
+1. Install dependencies for the backend and both clients:
 
    ```bash
    cd backend && npm install
    cd ../mobile && npm install
+   cd ../web && npm install
    ```
 
-2. Configure `backend/.env` from `backend/.env.example` and `mobile/.env` from `mobile/.env.example`. Set PostgreSQL and Supabase project values; configure the backend Supabase service-role key only on the backend for private ID-card viewing. Never add a service-role key to the mobile app.
+2. Configure environment files from the checked-in examples:
+
+   - `backend/.env` from `backend/.env.example`: set the database connection and Supabase server credentials. Keep the Supabase service-role key on the backend only.
+   - `mobile/.env` from `mobile/.env.example`: set the API and mobile application configuration.
+   - `web/.env` from `web/.env.example`: set `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`. The Supabase URL and publishable/anon key are browser-visible; never use a service-role key in a `VITE_` variable.
+
+   For local web development, allow `http://localhost:5173` in the backend `CORS_ORIGINS` setting.
 
 3. Apply the database migrations and seed the specialization catalog:
 
@@ -90,7 +97,7 @@ Requirements: Node.js 18+, npm, PostgreSQL 14+, and a Supabase project with emai
    npm run migrate:status
    ```
 
-4. Start the API and mobile app in separate terminals:
+4. Start the API and either or both clients in separate terminals:
 
    ```bash
    cd backend && npm run dev
@@ -100,9 +107,13 @@ Requirements: Node.js 18+, npm, PostgreSQL 14+, and a Supabase project with emai
    cd mobile && npm start
    ```
 
-The API health endpoint is `/health`; application endpoints are mounted under `/api/v1`. For a physical device, configure the mobile API URL with the development machine's LAN address instead of `localhost`.
+   ```bash
+   cd web && npm run dev
+   ```
 
-For the independent web application, see [web setup and security notes](./web/README.md). Its local Vite server uses `http://localhost:5173`; configure the backend CORS allowlist for this origin when running locally.
+The web development server is available at `http://localhost:5173`. The API health endpoint is `/health`; application endpoints are mounted under `/api/v1`. For a physical mobile device, configure the API URL with the development machine's LAN address instead of `localhost`.
+
+For web-specific setup, supported workflows, and security notes, see the [web application guide](./web/README.md).
 
 ## API areas
 
@@ -123,11 +134,14 @@ Protected requests use a Supabase access token. Application roles and doctor ver
 
 ## Validation
 
-Run the checks from their package directories:
+Run the relevant checks from each package directory:
 
 ```bash
 (cd backend && npm run build)
 (cd mobile && npx tsc --noEmit)
+(cd web && npm run typecheck)
+(cd web && npm run lint)
+(cd web && npm run build)
 (cd backend && npx ts-node test-doctor-scheduling.ts)
 (cd backend && npm run migrate:status)
 ```
