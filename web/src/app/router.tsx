@@ -8,6 +8,7 @@ import { RoleLayout } from '@/layouts/RoleLayout'
 import { ProtectedRoute } from '@/auth/ProtectedRoute'
 import { LoadingIndicator } from '@/components/common/LoadingIndicator'
 import {
+  LandingPage,
   AuthPage,
   AdminDashboardPage,
   AdminDoctorVerificationPage,
@@ -33,6 +34,7 @@ export const router = createBrowserRouter([
   {
     element: <PublicLayout />,
     children: [
+      { path: '/', element: withRouteLoading(<LandingPage />) },
       { path: '/login', element: withRouteLoading(<AuthPage title="Sign in to your care workspace" />) },
       { path: '/register/patient', element: withRouteLoading(<AuthPage title="Patient registration" />) },
       { path: '/register/doctor', element: withRouteLoading(<AuthPage title="Doctor registration" />) },
@@ -91,6 +93,5 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute role="doctor" allowUnverified />,
     children: [{ path: '/doctor/verification', element: withRouteLoading(<DoctorVerificationPage />) }],
   },
-  { path: '/', element: <Navigate to="/login" replace /> },
   { path: '*', element: withRouteLoading(<AuthPage title="Page not found" />) },
 ])

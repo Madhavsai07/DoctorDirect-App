@@ -1,5 +1,6 @@
 import { lazy } from 'react'
 
+export const LandingPage = lazy(() => import('@/pages/LandingPage').then((module) => ({ default: module.LandingPage })))
 export const AuthPage = lazy(() => import('@/features/auth/AuthPage').then((module) => ({ default: module.AuthPage })))
 export const AdminDashboardPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.AdminDashboardPage })))
 export const AdminDoctorVerificationPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.AdminDoctorVerificationPage })))
