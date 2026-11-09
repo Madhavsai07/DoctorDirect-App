@@ -209,6 +209,17 @@ export class UserRepository {
     return res.rows[0] ?? null;
   }
 
+  async findUnlinkedByEmail(email: string): Promise<DbUser | null> {
+    const res = await pool.query<DbUser>(
+      `SELECT id, auth_user_id, email, phone, role, first_name, last_name, avatar_url, is_active, created_at, updated_at
+       FROM users
+       WHERE LOWER(email) = LOWER($1) AND auth_user_id IS NULL
+       LIMIT 1`,
+      [email]
+    );
+    return res.rows[0] ?? null;
+  }
+
   async getPatientProfile(userId: string): Promise<DbPatientProfile | null> {
     const res = await pool.query<DbPatientProfile>(
       'SELECT * FROM patients WHERE user_id = $1',

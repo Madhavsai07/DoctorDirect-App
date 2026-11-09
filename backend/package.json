@@ -13,7 +13,9 @@
     "migrate:down": "ts-node-dev --transpile-only src/db/migrate.ts down",
     "migrate:status": "ts-node-dev --transpile-only src/db/migrate.ts status",
     "migrate:reset": "ts-node-dev --transpile-only src/db/migrate.ts reset",
-    "seed": "ts-node-dev --transpile-only src/db/migrate.ts seed"
+    "seed": "ts-node-dev --transpile-only src/db/migrate.ts seed",
+    "test:auth-linking": "ts-node test-auth-account-linking.ts",
+    "test:cors": "ts-node test-cors-policy.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

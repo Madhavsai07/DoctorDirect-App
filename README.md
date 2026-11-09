@@ -2,6 +2,8 @@
 
 DoctorDirect is a mobile application for patient-doctor appointment management. It uses a React Native/Expo client, an Express/TypeScript API, PostgreSQL for application data, and Supabase Auth for user identity and sessions.
 
+An independent React + Vite web application is available in `web/` alongside the existing mobile client. It uses Supabase browser authentication, backend-resolved role guards, and the existing APIs for supported patient, doctor, and admin workflows.
+
 ## Current status
 
 The repository contains the patient, doctor, and admin flows for account provisioning, doctor verification, availability and appointment scheduling, consultations, prescriptions, and notifications. The current hardening work focuses on existing-flow authorization, data consistency, error handling, and regression coverage; it does not introduce a new architecture.
@@ -47,6 +49,7 @@ Doctor ID cards are uploaded to a private Supabase Storage bucket. The app uploa
 | Area | Technology |
 | --- | --- |
 | Mobile | React Native, Expo, TypeScript |
+| Web (foundation) | React, TypeScript, Vite |
 | Navigation and state | React Navigation, Redux Toolkit |
 | Authentication and private files | Supabase Auth and Supabase Storage |
 | API | Node.js, Express, TypeScript |
@@ -56,6 +59,7 @@ Doctor ID cards are uploaded to a private Supabase Storage bucket. The app uploa
 
 ```text
 mobile/                  React Native application
+web/                     Independent React + Vite web application
 backend/src/             API routes, middleware, services, repositories
 backend/test-*.ts        Standalone backend integration checks
 database/migrations/     PostgreSQL migrations 001 through 012
@@ -97,6 +101,8 @@ Requirements: Node.js 18+, npm, PostgreSQL 14+, and a Supabase project with emai
    ```
 
 The API health endpoint is `/health`; application endpoints are mounted under `/api/v1`. For a physical device, configure the mobile API URL with the development machine's LAN address instead of `localhost`.
+
+For the independent web application, see [web setup and security notes](./web/README.md). Its local Vite server uses `http://localhost:5173`; configure the backend CORS allowlist for this origin when running locally.
 
 ## API areas
 

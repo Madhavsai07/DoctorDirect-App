@@ -1,6 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import config from './config/env';
+import { createCorsMiddleware } from './middleware/cors.middleware';
 import healthRouter from './routes/health.route';
 import prescriptionRouter from './routes/prescription.route';
 import patientRouter from './routes/patient.route';
@@ -19,7 +19,7 @@ function createApp(): Application {
   const app = express();
 
   // ── Middleware ────────────────────────────────────────────────────────────
-  app.use(cors());
+  app.use(createCorsMiddleware(config.corsOrigins));
   app.use(express.json());
 
   // ── Routes ────────────────────────────────────────────────────────────────

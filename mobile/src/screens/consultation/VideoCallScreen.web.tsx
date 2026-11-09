@@ -62,6 +62,15 @@ export default function VideoCallScreen({ route, navigation }: Props) {
       const connection = new RTCPeerConnection({ iceServers: Array.isArray(ice.data.iceServers) ? ice.data.iceServers : [] }); peer.current = connection;
       let consultationAuthorized = false;
       const pendingCandidates: RTCIceCandidateInit[] = [];
+      const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+      let hasRemoteDescription = false;
+      const applyRemoteDescription = async (description: RTCSessionDescriptionInit) => {
+        await connection.setRemoteDescription(description);
+        while (pendingRemoteCandidates.length) {
+          await connection.addIceCandidate(pendingRemoteCandidates.shift()!);
+        }
+        hasRemoteDescription = true;
+      };
       const sendSignal = (message: object) => {
         if (consultationAuthorized && socket.current?.readyState === WebSocket.OPEN) {
           socket.current.send(JSON.stringify(message));
@@ -78,7 +87,7 @@ export default function VideoCallScreen({ route, navigation }: Props) {
       connection.onconnectionstatechange = () => {
         if (!consultationAuthorized) return;
         if (connection.connectionState === 'connected') setState('connected');
-        else if (connection.connectionState === 'failed') { setState('failed'); setError('Peer connection failed. You can end the call and rejoin.'); }
+        else if (connection.connectionState === 'failed') { cleanup(false); setState('failed'); setError('Peer connection failed. You can end the call and rejoin.'); }
         else if (connection.connectionState === 'disconnected') setState('reconnecting');
       };
       const handleMessage = (message: SignalingMessage) => { void (async () => {
@@ -88,20 +97,22 @@ export default function VideoCallScreen({ route, navigation }: Props) {
             await connection.setLocalDescription(offer);
             sendSignal({ type: 'offer', payload: offer });
           } else if (message.type === 'offer') {
-            await connection.setRemoteDescription(message.payload as RTCSessionDescriptionInit);
+            await applyRemoteDescription(message.payload as RTCSessionDescriptionInit);
             const answer = await connection.createAnswer();
             await connection.setLocalDescription(answer);
             sendSignal({ type: 'answer', payload: answer });
           } else if (message.type === 'answer') {
-            await connection.setRemoteDescription(message.payload as RTCSessionDescriptionInit);
+            await applyRemoteDescription(message.payload as RTCSessionDescriptionInit);
           } else if (message.type === 'ice-candidate') {
-            await connection.addIceCandidate(message.payload as RTCIceCandidateInit);
+            if (hasRemoteDescription) await connection.addIceCandidate(message.payload as RTCIceCandidateInit);
+            else pendingRemoteCandidates.push(message.payload as RTCIceCandidateInit);
           } else if (message.type === 'participant-left') {
             setHasRemote(false); setState('waiting');
           } else if (message.type === 'error') {
             throw new Error(message.error || 'Signaling failed.');
           }
         } catch (cause) {
+          cleanup(false);
           setState('failed');
           setError(cause instanceof Error ? cause.message : 'Signaling failed.');
         }

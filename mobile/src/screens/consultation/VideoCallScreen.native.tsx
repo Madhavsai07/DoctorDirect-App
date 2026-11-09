@@ -70,6 +70,15 @@ export default function VideoCallScreen({ route, navigation }: Props) {
         const pc = new RTCPeerConnection({ iceServers: Array.isArray(iceResponse.data.iceServers) ? iceResponse.data.iceServers : [] }); peer.current = pc;
         let consultationAuthorized = false;
         const pendingCandidates: unknown[] = [];
+        const pendingRemoteCandidates: unknown[] = [];
+        let hasRemoteDescription = false;
+        const applyRemoteDescription = async (description: unknown) => {
+          await pc.setRemoteDescription(description);
+          while (pendingRemoteCandidates.length) {
+            await pc.addIceCandidate(pendingRemoteCandidates.shift());
+          }
+          hasRemoteDescription = true;
+        };
         const sendSignal = (message: object) => {
           if (consultationAuthorized && socket.current?.readyState === WebSocket.OPEN) {
             socket.current.send(JSON.stringify(message));
@@ -96,20 +105,22 @@ export default function VideoCallScreen({ route, navigation }: Props) {
               await pc.setLocalDescription(offer);
               sendSignal({ type: 'offer', payload: offer });
             } else if (msg.type === 'offer') {
-              await pc.setRemoteDescription(msg.payload);
+              await applyRemoteDescription(msg.payload);
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               sendSignal({ type: 'answer', payload: answer });
             } else if (msg.type === 'answer') {
-              await pc.setRemoteDescription(msg.payload);
+              await applyRemoteDescription(msg.payload);
             } else if (msg.type === 'ice-candidate') {
-              await pc.addIceCandidate(msg.payload);
+              if (hasRemoteDescription) await pc.addIceCandidate(msg.payload);
+              else pendingRemoteCandidates.push(msg.payload);
             } else if (msg.type === 'participant-left') {
               setRemoteStream(null); setState('waiting');
             } else if (msg.type === 'error') {
               throw new Error(msg.error || 'Signaling failed.');
             }
           } catch {
+            cleanup(false);
             setState('failed');
           }
         })(); };
@@ -136,7 +147,7 @@ export default function VideoCallScreen({ route, navigation }: Props) {
         consultationAuthorized = true;
         setState(joined.peerPresent ? 'connecting' : 'waiting');
         pendingCandidates.splice(0).forEach(payload => sendSignal({ type: 'ice-candidate', payload }));
-      } catch (error) { if (alive) { setState('failed'); Alert.alert('Unable to start video call', error instanceof Error ? error.message : 'Please try again.'); } }
+      } catch (error) { if (alive) { cleanup(false); setState('failed'); Alert.alert('Unable to start video call', error instanceof Error ? error.message : 'Please try again.'); } }
     }; void start(); return () => { alive = false; cleanup(false); };
   }, [cleanup, consultationId]);
   const toggleMute = () => { const track = local.current?.getAudioTracks()[0]; if (track) { track.enabled = !track.enabled; setMuted(!track.enabled); } };

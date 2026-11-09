@@ -1,0 +1,17 @@
+import { lazy } from 'react'
+
+export const AuthPage = lazy(() => import('@/features/auth/AuthPage').then((module) => ({ default: module.AuthPage })))
+export const AdminDashboardPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.AdminDashboardPage })))
+export const AdminDoctorVerificationPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.AdminDoctorVerificationPage })))
+export const AdminDoctorsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.AdminDoctorsPage })))
+export const DoctorAppointmentsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.DoctorAppointmentsPage })))
+export const DoctorDashboardPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.DoctorDashboardPage })))
+export const DoctorPrescriptionsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.DoctorPrescriptionsPage })))
+export const DoctorSchedulePage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.DoctorSchedulePage })))
+export const DoctorVerificationPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.DoctorVerificationPage })))
+export const NotificationsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.NotificationsPage })))
+export const PatientAppointmentsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.PatientAppointmentsPage })))
+export const PatientDashboardPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.PatientDashboardPage })))
+export const PatientDoctorsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.PatientDoctorsPage })))
+export const PatientPrescriptionsPage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.PatientPrescriptionsPage })))
+export const ProfilePage = lazy(() => import('@/pages/RolePages').then((module) => ({ default: module.ProfilePage })))

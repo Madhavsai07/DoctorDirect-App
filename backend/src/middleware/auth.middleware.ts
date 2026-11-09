@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { userRepository, DbUser } from '../repositories/user.repository';
 import { getSupabaseClient } from '../services/supabase';
+import { resolveApplicationUser } from '../services/application-user.service';
 
 // Extend Express Request to hold authenticated user
 declare global {
@@ -28,14 +29,26 @@ async function authenticate(req: Request, res: Response, next: NextFunction, req
     const { data, error } = await getSupabaseClient().auth.getUser(token);
     if (!error && data.user?.email) {
       authIdentity = { id: data.user.id, email: data.user.email };
-      user = await userRepository.findByAuthUserId(data.user.id);
-      if (!user) {
-        user = await userRepository.linkAuthUserByVerifiedEmail(data.user.id, data.user.email);
-      }
+      user = await resolveApplicationUser({
+        id: data.user.id,
+        email: data.user.email,
+        email_confirmed_at: data.user.email_confirmed_at,
+      });
     }
   } catch (error) {
     if (error instanceof Error && error.message === 'Supabase authentication is not configured.') {
       res.status(503).json({ error: 'Authentication service is temporarily unavailable.' });
+      return;
+    }
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'EMAIL_VERIFICATION_REQUIRED'
+    ) {
+      res.status(403).json({
+        error: error.message,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+      });
       return;
     }
     next(error);

@@ -5,6 +5,13 @@ dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
 const databaseSslSetting = process.env.DATABASE_SSL;
+const corsOrigins = (
+  process.env.CORS_ORIGINS ??
+  (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173')
+)
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 if (databaseSslSetting && !['true', 'false'].includes(databaseSslSetting)) {
   throw new Error('DATABASE_SSL must be set to "true" or "false".');
@@ -25,6 +32,7 @@ if (process.env.NODE_ENV === 'production' && !databaseUrl) {
 const config = {
   port: parseInt(process.env.PORT ?? '8000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  corsOrigins,
 
   // ── Added in the Database milestone ──────────────────────────────────────
   databaseUrl,
