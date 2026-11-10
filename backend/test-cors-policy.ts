@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { createServer } from 'node:http';
+import config from './src/config/env';
 import { createCorsMiddleware } from './src/middleware/cors.middleware';
 
 async function run(): Promise<void> {
+  assert.ok(config.corsOrigins.includes('https://doctor-direct-app-ten.vercel.app'));
   const app = express();
-  app.use(createCorsMiddleware(['http://localhost:5173']));
+  app.use(createCorsMiddleware(config.corsOrigins));
   app.use((_req, res) => res.status(404).send('test route'));
 
   const server = createServer(app);
@@ -33,6 +35,18 @@ async function run(): Promise<void> {
     assert.match(allowed.headers.get('access-control-allow-headers') ?? '', /content-type/i);
     assert.equal(allowed.headers.get('access-control-allow-credentials'), null);
     console.log('PASS: configured localhost origin receives required non-credentialed CORS headers.');
+
+    const vercelAllowed = await fetch(`${baseUrl}/test`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://doctor-direct-app-ten.vercel.app',
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization',
+      },
+    });
+    assert.equal(vercelAllowed.status, 204);
+    assert.equal(vercelAllowed.headers.get('access-control-allow-origin'), 'https://doctor-direct-app-ten.vercel.app');
+    console.log('PASS: production Vercel origin receives required CORS headers.');
 
     const rejected = await fetch(`${baseUrl}/test`, {
       headers: { Origin: 'https://unapproved.example' },

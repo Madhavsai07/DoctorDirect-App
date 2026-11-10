@@ -2,7 +2,10 @@ import axios from 'axios'
 import { supabase } from '@/auth/supabaseClient'
 import { ApiError, toApiError } from '@/api/errors'
 
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api/v1'
+const defaultBaseURL = import.meta.env.PROD
+  ? 'https://doctordirect-app.onrender.com/api/v1'
+  : 'http://localhost:5001/api/v1'
+const baseURL = import.meta.env.VITE_API_BASE_URL || defaultBaseURL
 
 export const apiClient = axios.create({
   baseURL,

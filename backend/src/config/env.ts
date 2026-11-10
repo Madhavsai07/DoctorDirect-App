@@ -9,13 +9,17 @@ const webrtcStunUrls = (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value
 const webrtcTurnUrls = (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean);
 const webrtcTurnSharedSecret = process.env.WEBRTC_TURN_SHARED_SECRET;
 const webrtcTurnCredentialTtlSeconds = Number(process.env.WEBRTC_TURN_CREDENTIAL_TTL_SECONDS ?? '3600');
-const corsOrigins = (
+const configuredCorsOrigins = (
   process.env.CORS_ORIGINS ??
   (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173')
 )
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const corsOrigins = Array.from(new Set([
+  ...configuredCorsOrigins,
+  'https://doctor-direct-app-ten.vercel.app',
+]));
 
 if (databaseSslSetting && !['true', 'false'].includes(databaseSslSetting)) {
   throw new Error('DATABASE_SSL must be set to "true" or "false".');
