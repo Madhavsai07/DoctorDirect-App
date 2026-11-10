@@ -222,6 +222,12 @@ export const api = {
     })
     return data.consultation
   },
+  async iceServers(consultationId: string) {
+    const { data } = await apiClient.get<{ iceServers: ConsultationIceServer[] }>(
+      `/consultations/video/${consultationId}/ice-servers`,
+    )
+    return data
+  },
   async updateConsultation(id: string, body: Record<string, string>) {
     const { data } = await apiClient.patch<{ consultation: Consultation }>(
       `/consultations/${id}`,
@@ -319,6 +325,12 @@ export interface Consultation {
   treatment_plan: string | null
   follow_up_instructions: string | null
   prescription: string | null
+}
+
+export interface ConsultationIceServer {
+  urls: string | string[]
+  username?: string
+  credential?: string
 }
 
 export interface NotificationItem {

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarDays, Check, Clock3, FileText, RefreshCw, Search, Stethoscope, UserRound, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CalendarDays, Check, Clock3, FileText, RefreshCw, Search, Stethoscope, UserRound, Video, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { api, type AdminDoctor, type Appointment, type AvailabilityWindow, type Consultation, type Doctor, type NotificationItem, type Prescription, type ScheduleOverride, type ScheduleSlot, type Slot } from '@/api/services'
@@ -10,6 +10,7 @@ import { ErrorDisplay } from '@/components/feedback/ErrorDisplay'
 import { LoadingIndicator } from '@/components/common/LoadingIndicator'
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ConfirmationDialog } from '@/components/feedback/ConfirmationDialog'
+import { VideoCallDialog } from '@/features/consultation/VideoCallDialog'
 
 const appointmentStatusLabel: Record<string, string> = {
   booked: 'Booked',
@@ -152,6 +153,11 @@ function AppointmentCard({
         )}
         {kind === 'patient' && appointment.status === 'completed' && onConsult && (
           <button type="button" className="button button--secondary" onClick={() => onConsult(appointment)}>View consultation</button>
+        )}
+        {kind === 'patient' && appointment.status === 'in_progress' && onConsult && (
+          <button type="button" className="button button--primary" onClick={() => onConsult(appointment)}>
+            <Video size={15} /> Open consultation
+          </button>
         )}
         {kind === 'doctor' && appointment.status === 'booked' && (
           <button type="button" className="button button--secondary" disabled={busy} onClick={() => void action(() => api.confirmAppointment(appointment.id))}>Confirm</button>
@@ -390,7 +396,9 @@ export function PatientAppointmentsPage() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming')
   const [viewingConsultation, setViewingConsultation] = useState<Appointment | null>(null)
   const [consultation, setConsultation] = useState<Consultation | null>(null)
+  const [callOpen, setCallOpen] = useState(false)
   const [consultationLoading, setConsultationLoading] = useState(false)
+  const consultationRequestId = useRef(0)
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelError, setCancelError] = useState('')
@@ -421,13 +429,22 @@ export function PatientAppointmentsPage() {
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to reschedule.') }
   }
   const viewConsultation = async (appointment: Appointment) => {
+    const requestId = ++consultationRequestId.current
     setViewingConsultation(appointment)
     setConsultation(null)
+    setCallOpen(false)
     setConsultationLoading(true)
     setError('')
-    try { setConsultation(await api.consultation(appointment.id)) }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load consultation.') }
-    finally { setConsultationLoading(false) }
+    try {
+      const activeConsultation = await api.consultation(appointment.id)
+      if (requestId === consultationRequestId.current) setConsultation(activeConsultation)
+    } catch (requestError) {
+      if (requestId === consultationRequestId.current) {
+        setError(requestError instanceof Error ? requestError.message : 'Unable to load consultation.')
+      }
+    } finally {
+      if (requestId === consultationRequestId.current) setConsultationLoading(false)
+    }
   }
   const cancelAppointment = async () => {
     if (!cancelTarget) return
@@ -469,20 +486,36 @@ export function PatientAppointmentsPage() {
         <div className="slots-grid">{slots.map((slot) => <button className="slot-button" type="button" key={slot.id} onClick={() => void reschedule(slot.id)}><strong>{new Date(`${slot.date}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}</strong><span>{readableTime(slot.start_time)}</span></button>)}</div>
         {!slots.length && <p className="muted-copy">No available replacement slots were found in the next 30 days.</p>}
       </section></div>}
-      {viewingConsultation && <div className="modal-backdrop" role="presentation" onClick={() => setViewingConsultation(null)}>
+      {viewingConsultation && <div className="modal-backdrop" role="presentation" onClick={() => { consultationRequestId.current += 1; setViewingConsultation(null); setCallOpen(false) }}>
         <section className="workflow-modal" role="dialog" aria-modal="true" aria-labelledby="patient-consult-title" onClick={(event) => event.stopPropagation()}>
-          <button className="modal-close" type="button" aria-label="Close" onClick={() => setViewingConsultation(null)}><X size={19} /></button>
+          <button className="modal-close" type="button" aria-label="Close" onClick={() => { consultationRequestId.current += 1; setViewingConsultation(null); setCallOpen(false) }}><X size={19} /></button>
           <span className="eyebrow">CONSULTATION · DR. {viewingConsultation.doctor_first_name} {viewingConsultation.doctor_last_name}</span>
-          <h2 id="patient-consult-title">Visit notes</h2>
-          {consultationLoading ? <LoadingIndicator label="Loading consultation notes" /> : consultation ? <dl className="detail-list detail-list--single">
-            <div><dt>Symptoms</dt><dd>{consultation.symptoms || 'Not recorded'}</dd></div>
-            <div><dt>Diagnosis</dt><dd>{consultation.diagnosis || 'Not recorded'}</dd></div>
-            <div><dt>Clinical notes</dt><dd>{consultation.clinical_notes || 'Not recorded'}</dd></div>
-            <div><dt>Treatment plan</dt><dd>{consultation.treatment_plan || 'Not recorded'}</dd></div>
-            <div><dt>Follow-up instructions</dt><dd>{consultation.follow_up_instructions || 'Not recorded'}</dd></div>
-          </dl> : <PageNotice message={error || 'No consultation details are available.'} />}
+          <h2 id="patient-consult-title">{consultation?.status === 'in_progress' ? 'Consultation' : 'Visit notes'}</h2>
+          {consultationLoading ? <LoadingIndicator label="Loading consultation notes" /> : consultation
+            ? consultation.status === 'completed'
+              ? <dl className="detail-list detail-list--single">
+                  <div><dt>Symptoms</dt><dd>{consultation.symptoms || 'Not recorded'}</dd></div>
+                  <div><dt>Diagnosis</dt><dd>{consultation.diagnosis || 'Not recorded'}</dd></div>
+                  <div><dt>Clinical notes</dt><dd>{consultation.clinical_notes || 'Not recorded'}</dd></div>
+                  <div><dt>Treatment plan</dt><dd>{consultation.treatment_plan || 'Not recorded'}</dd></div>
+                  <div><dt>Follow-up instructions</dt><dd>{consultation.follow_up_instructions || 'Not recorded'}</dd></div>
+                </dl>
+              : <p className="muted-copy">Your consultation is in progress. Join the video call to continue with your doctor.</p>
+            : <PageNotice message={error || 'No consultation details are available.'} />}
+          {consultation?.status === 'in_progress' && <div className="modal-actions">
+            <button className="button button--primary" type="button" onClick={() => setCallOpen(true)}>
+              <Video size={16} /> Join video consultation
+            </button>
+          </div>}
         </section>
       </div>}
+      {viewingConsultation && consultation?.status === 'in_progress' && callOpen && (
+        <VideoCallDialog
+          consultationId={consultation.id}
+          title={`Dr. ${viewingConsultation.doctor_first_name} ${viewingConsultation.doctor_last_name}`}
+          onClose={() => setCallOpen(false)}
+        />
+      )}
       {cancelTarget && <div className="modal-backdrop" role="presentation" onClick={() => !cancelling && setCancelTarget(null)}>
         <section className="workflow-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-appointment-title" onClick={(event) => event.stopPropagation()}>
           <button className="modal-close" type="button" aria-label="Close" disabled={cancelling} onClick={() => setCancelTarget(null)}><X size={19} /></button>
@@ -592,6 +625,9 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Appointment | null>(null)
   const [consultation, setConsultation] = useState<{ id: string; diagnosis: string; symptoms: string; clinical_notes: string; treatment_plan: string; follow_up_instructions: string } | null>(null)
+  const consultationRequestId = useRef(0)
+  const [callOpen, setCallOpen] = useState(false)
+  const [callConsultationId, setCallConsultationId] = useState<string | null>(null)
   const [prescription, setPrescription] = useState<Prescription | null>(null)
   const [medicines, setMedicines] = useState([{ name: '', dosage: '', frequency: '', duration: '', instructions: '' }])
   const [saving, setSaving] = useState(false)
@@ -604,7 +640,11 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
   useEffect(() => { void load() }, [load])
 
   const openConsultation = async (appointment: Appointment) => {
+    const requestId = ++consultationRequestId.current
     setSelected(appointment)
+    setCallOpen(false)
+    setCallConsultationId(null)
+    setConsultation(null)
     setError('')
     setPrescription(null)
     try {
@@ -614,6 +654,7 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         if (!(requestError instanceof ApiError && requestError.status === 404)) throw requestError
         existing = await api.startConsultation(appointment.id)
       }
+      if (requestId !== consultationRequestId.current) return
       const activeConsultation = {
         id: existing.id,
         diagnosis: existing.diagnosis ?? '',
@@ -623,12 +664,18 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         follow_up_instructions: existing.follow_up_instructions ?? '',
       }
       setConsultation(activeConsultation)
+      if (existing.status === 'in_progress') {
+        setSelected({ ...appointment, status: 'in_progress' })
+        setCallConsultationId(existing.id)
+      }
       if (existing.status === 'completed') {
         try { setPrescription(await api.prescriptionsForConsultation(existing.id)) }
         catch (requestError) { if (!(requestError instanceof ApiError && requestError.status === 404)) throw requestError }
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to open consultation.')
+      if (requestId === consultationRequestId.current) {
+        setError(requestError instanceof Error ? requestError.message : 'Unable to open consultation.')
+      }
     }
   }
 
@@ -755,9 +802,9 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
             : 'Try another appointment filter or refresh the list.'}
       />
     )}
-    {selected && <div className="modal-backdrop" role="presentation" onClick={() => setSelected(null)}>
+    {selected && <div className="modal-backdrop" role="presentation" onClick={() => { consultationRequestId.current += 1; setSelected(null) }}>
       <section className="workflow-modal workflow-modal--wide" role="dialog" aria-modal="true" aria-labelledby="consult-title" onClick={(event) => event.stopPropagation()}>
-        <button className="modal-close" type="button" aria-label="Close" onClick={() => setSelected(null)}><X size={19} /></button>
+        <button className="modal-close" type="button" aria-label="Close" onClick={() => { consultationRequestId.current += 1; setSelected(null) }}><X size={19} /></button>
         <span className="eyebrow">CONSULTATION · {selected.patient_first_name} {selected.patient_last_name}</span>
         <h2 id="consult-title">Clinical documentation</h2>
         {selected.patient_allergies && <div className="warning-message">Patient allergies: {selected.patient_allergies}</div>}
@@ -765,6 +812,11 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         {error && <PageNotice message={error} />}
         {!consultation ? <LoadingIndicator label="Opening consultation" /> : (
           <>
+            {callConsultationId && selected.status === 'in_progress' && <div className="modal-actions consultation-call-action">
+              <button className="button button--primary" type="button" onClick={() => setCallOpen(true)}>
+                <Video size={16} /> Join video consultation
+              </button>
+            </div>}
             <div className="consultation-form">
               {([
                 ['symptoms', 'Symptoms'],
@@ -799,6 +851,13 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         )}
       </section>
     </div>}
+    {selected && callOpen && callConsultationId && (
+      <VideoCallDialog
+        consultationId={callConsultationId}
+        title={`${selected.patient_first_name} ${selected.patient_last_name}`}
+        onClose={() => setCallOpen(false)}
+      />
+    )}
   </section>
 }
 

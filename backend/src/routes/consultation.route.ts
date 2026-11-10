@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { consultationService } from '../services/consultation.service';
+import { createTurnCredentials } from '../services/turn-credentials.service';
 import config from '../config/env';
 
 const consultationRouter = Router();
@@ -14,8 +15,13 @@ consultationRouter.get('/video/:consultationId/ice-servers', requireAuth, async 
     }
     const iceServers: Array<{ urls: string[]; username?: string; credential?: string }> = [];
     if (config.webrtcStunUrls.length) iceServers.push({ urls: config.webrtcStunUrls });
-    if (config.webrtcTurnUrls.length && config.webrtcTurnUsername && config.webrtcTurnCredential) {
-      iceServers.push({ urls: config.webrtcTurnUrls, username: config.webrtcTurnUsername, credential: config.webrtcTurnCredential });
+    if (config.webrtcTurnUrls.length && config.webrtcTurnSharedSecret) {
+      const { username, credential } = createTurnCredentials(
+        req.user!.id,
+        config.webrtcTurnSharedSecret,
+        config.webrtcTurnCredentialTtlSeconds
+      );
+      iceServers.push({ urls: config.webrtcTurnUrls, username, credential });
     }
     res.json({ iceServers });
   } catch (error) { next(error); }

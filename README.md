@@ -19,7 +19,13 @@ The repository contains the patient, doctor, and admin flows for account provisi
 
 ### Not currently implemented
 
-The web application does not currently include video calling. Audio transcription, AI-generated clinical notes, and offline synchronization are not implemented. Consultation records and doctor-authored prescriptions are separate existing flows and do not depend on these features.
+The Expo mobile client and separate React + Vite web application include WebRTC call flows for active consultations. Real cross-platform calls, production TURN relay, and physical-device network recovery have not been verified. Audio transcription, AI-generated clinical notes, and offline synchronization are not implemented. Ending a call does not complete the consultation; consultation records and doctor-authored prescriptions remain separate workflows.
+
+### WebRTC infrastructure
+
+The backend issues short-lived Coturn REST credentials only after an authenticated participant requests ICE configuration for an active consultation. Configure `WEBRTC_STUN_URLS`, `WEBRTC_TURN_URLS`, and a high-entropy `WEBRTC_TURN_SHARED_SECRET` on the backend; the TURN server must use the matching REST shared secret. `WEBRTC_TURN_CREDENTIAL_TTL_SECONDS` defaults to one hour. Never put the shared secret in mobile or web environment variables.
+
+Production requires both STUN and TURN URLs. When TLS terminates at a trusted reverse proxy, set backend `TRUST_PROXY=true`; signaling upgrades require a secure connection. For an isolated relay verification build, set mobile `EXPO_PUBLIC_WEBRTC_RELAY_ONLY=true` or web `VITE_WEBRTC_RELAY_TEST_ENABLED=true`, make a real call, and verify that the selected candidate pair uses a relay. Return the setting to `false` after testing. Relay-only mode is not proof of TURN connectivity unless a call succeeds over a relay. The web client uses `VITE_SIGNALING_URL` when signaling is hosted separately; otherwise it derives the signaling URL from `VITE_API_BASE_URL`.
 
 ## Architecture
 

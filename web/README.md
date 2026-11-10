@@ -44,6 +44,8 @@ Set the public variables in `web/.env`:
 VITE_API_BASE_URL=http://localhost:5001/api/v1
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-publishable-or-anon-key
+VITE_SIGNALING_URL=ws://localhost:5001/api/v1/signaling
+VITE_WEBRTC_RELAY_TEST_ENABLED=false
 ```
 
 The Supabase URL and publishable/anon key are public browser configuration. Never put a Supabase service-role key, database URL/password, or other backend secret in a `VITE_` variable. The generated `web/.env` is ignored by Git.
@@ -65,16 +67,23 @@ The API client attaches the current Supabase access token and normalizes network
 
 Existing API limitations remain: profile editing, admin user management, aggregate dashboard statistics, and a complete admin appointment overview are not provided by the backend. The web app does not simulate these capabilities.
 
+Patient and approved-doctor appointment workflows include a browser video-call dialog for consultations whose backend status is `in_progress`. The dialog obtains ICE servers from the existing authenticated consultation endpoint and uses the existing authenticated WebSocket signaling protocol. Ending a call only leaves signaling and closes local media; it does not complete the consultation or alter clinical documentation.
+
+`VITE_SIGNALING_URL` is optional: when omitted, the app derives `/signaling` from `VITE_API_BASE_URL` and switches to `wss://` on HTTPS pages. Set it explicitly if signaling is hosted at a different origin. Production pages require HTTPS, a WSS signaling URL, backend WebSocket upgrade support, and production ICE servers. The browser does not contain TURN shared secrets; the backend returns per-session ICE credentials through the participant-authorized endpoint.
+
+For controlled relay testing, set `VITE_WEBRTC_RELAY_TEST_ENABLED=true` to reveal the relay-only option in the call dialog. This only forces relay candidate selection; verify the displayed route reports `relay` during a real call before concluding TURN works. The local backend configuration does not currently provide STUN/TURN URLs or a TURN shared secret, so relay calls cannot be verified until an administrator configures the backend and a real peer call is performed. Browser permission and network restrictions may also prevent device testing.
+
 ## Checks and production build
 
 ```sh
 npm run typecheck
 npm run lint
+npm run test:signaling
 npm run build
 npm run preview
 ```
 
-For production, host the built `dist/` directory separately from the Render API. Set the production API URL, Supabase URL, and publishable/anon key as frontend build-time configuration; add the exact production web origin to the backend `CORS_ORIGINS` allowlist and configure Supabase Auth redirect URLs for sign-in and password recovery. Both web and API must use HTTPS in production. Never put private credentials in `VITE_` variables.
+For production, host the built `dist/` directory separately from the Render API. Set the production API URL, signaling WSS URL if not colocated, Supabase URL, and publishable/anon key as frontend build-time configuration; add the exact production web origin to the backend `CORS_ORIGINS` allowlist and configure Supabase Auth redirect URLs for sign-in and password recovery. Both web and API must use HTTPS in production. Never put private credentials in `VITE_` variables.
 
 ## Security notes
 

@@ -15,7 +15,10 @@
     "migrate:reset": "ts-node-dev --transpile-only src/db/migrate.ts reset",
     "seed": "ts-node-dev --transpile-only src/db/migrate.ts seed",
     "test:auth-linking": "ts-node test-auth-account-linking.ts",
-    "test:cors": "ts-node test-cors-policy.ts"
+    "test:cors": "ts-node test-cors-policy.ts",
+    "test:signaling": "ts-node test-signaling-auth.ts",
+    "test:turn": "ts-node test-turn-credentials.ts",
+    "test:webrtc-config": "ts-node test-webrtc-config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

@@ -34,6 +34,16 @@ function protocolToken(req: IncomingMessage): string | null {
   const values = String(req.headers['sec-websocket-protocol'] ?? '').split(',').map(v => v.trim());
   return values[0] === 'dd-auth' && values[1] ? values[1] : null;
 }
+export function isSecureSignalingUpgrade(
+  req: IncomingMessage,
+  nodeEnv = config.nodeEnv,
+  trustProxy = config.trustProxy
+): boolean {
+  if (nodeEnv !== 'production' || (req.socket as any).encrypted) return true;
+  const forwarded = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim();
+  return trustProxy && forwarded === 'https';
+}
+
 function validDescription(value: unknown): value is { type: 'offer' | 'answer'; sdp: string } {
   return !!value && typeof value === 'object' && (value as any).type !== undefined && ['offer', 'answer'].includes((value as any).type) && typeof (value as any).sdp === 'string' && (value as any).sdp.length <= 60_000;
 }
@@ -70,8 +80,7 @@ export function createSignalingServer(dependencies: SignalingDependencies = defa
   return {
     handleUpgrade(req: IncomingMessage, socket: any, head: Buffer) {
       if (!req.url?.startsWith(config.signalingPath)) return false;
-      const forwarded = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim();
-      if (config.nodeEnv === 'production' && !(req.socket as any).encrypted && forwarded !== 'https') { socket.destroy(); return true; }
+      if (!isSecureSignalingUpgrade(req)) { socket.destroy(); return true; }
       if (!protocolToken(req)) { socket.destroy(); return true; }
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
       return true;
@@ -98,7 +107,7 @@ async function handleMessage(
       room.set(role, client); client.consultationId = message.consultationId; client.role = role;
       send(client, { type: 'joined', role, peerPresent: room.size === 2 });
       for (const peer of room.values()) if (peer !== client) send(peer, { type: 'participant-joined', role });
-    } catch (error) { send(client, { type: 'error', error: error instanceof Error ? error.message : 'Unable to join call.' }); }
+    } catch (error) { send(client, { type: 'error', fatal: true, error: error instanceof Error ? error.message : 'Unable to join call.' }); }
     return;
   }
   if (!client.consultationId || !client.role) return send(client, { type: 'error', error: 'Join a consultation before signaling.' });

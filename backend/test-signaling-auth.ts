@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
 import { WebSocket } from 'ws';
-import { createSignalingServer, SignalingDependencies } from './src/signaling';
+import { createSignalingServer, isSecureSignalingUpgrade, SignalingDependencies } from './src/signaling';
 import { DbUser } from './src/repositories/user.repository';
 
 const patient: DbUser = {
@@ -111,12 +111,26 @@ async function testUnauthorizedParticipant() {
     await nextMessage(socket);
     socket.send(JSON.stringify({ type: 'join', consultationId: '33333333-3333-3333-3333-333333333333' }));
     const response = await nextMessage(socket);
-    assert.deepEqual(response, { type: 'error', error: 'You are not a participant in this consultation.' });
+    assert.deepEqual(response, { type: 'error', fatal: true, error: 'You are not a participant in this consultation.' });
     await close(socket);
   });
 }
 
+function testSecureUpgradePolicy() {
+  const request = (encrypted: boolean, forwarded?: string) => ({
+    socket: { encrypted },
+    headers: forwarded ? { 'x-forwarded-proto': forwarded } : {},
+  }) as any;
+  assert.equal(isSecureSignalingUpgrade(request(false), 'production', false), false);
+  assert.equal(isSecureSignalingUpgrade(request(false, 'https'), 'production', false), false);
+  assert.equal(isSecureSignalingUpgrade(request(false, 'https'), 'production', true), true);
+  assert.equal(isSecureSignalingUpgrade(request(false, 'http, https'), 'production', true), false);
+  assert.equal(isSecureSignalingUpgrade(request(true), 'production', false), true);
+  assert.equal(isSecureSignalingUpgrade(request(false), 'development', false), true);
+}
+
 void (async () => {
+  testSecureUpgradePolicy();
   await testMissingToken();
   await testInvalidToken();
   await testSuccessfulHandshake();

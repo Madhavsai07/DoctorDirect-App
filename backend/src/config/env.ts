@@ -5,6 +5,10 @@ dotenv.config();
 
 const databaseUrl = process.env.DATABASE_URL;
 const databaseSslSetting = process.env.DATABASE_SSL;
+const webrtcStunUrls = (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+const webrtcTurnUrls = (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+const webrtcTurnSharedSecret = process.env.WEBRTC_TURN_SHARED_SECRET;
+const webrtcTurnCredentialTtlSeconds = Number(process.env.WEBRTC_TURN_CREDENTIAL_TTL_SECONDS ?? '3600');
 const corsOrigins = (
   process.env.CORS_ORIGINS ??
   (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173')
@@ -19,6 +23,28 @@ if (databaseSslSetting && !['true', 'false'].includes(databaseSslSetting)) {
 
 if (process.env.NODE_ENV === 'production' && !databaseUrl) {
   throw new Error('DATABASE_URL is required in production.');
+}
+
+const containsInlineCredentials = (url: string) => /(?:^|[?&])(?:username|credential|password)=/i.test(url);
+
+if (webrtcStunUrls.some(url => !/^(stun|stuns):[^,\s@]+$/i.test(url) || containsInlineCredentials(url))) {
+  throw new Error('WEBRTC_STUN_URLS must contain only STUN or STUNS URLs without embedded credentials.');
+}
+
+if (webrtcTurnUrls.some(url => !/^(turn|turns):[^,\s@]+$/i.test(url) || containsInlineCredentials(url))) {
+  throw new Error('WEBRTC_TURN_URLS must contain only TURN or TURNS URLs without embedded credentials.');
+}
+
+if (webrtcTurnUrls.length && (!webrtcTurnSharedSecret || webrtcTurnSharedSecret.length < 32)) {
+  throw new Error('WEBRTC_TURN_SHARED_SECRET must be at least 32 characters when TURN URLs are configured.');
+}
+
+if (!Number.isInteger(webrtcTurnCredentialTtlSeconds) || webrtcTurnCredentialTtlSeconds < 60 || webrtcTurnCredentialTtlSeconds > 86400) {
+  throw new Error('WEBRTC_TURN_CREDENTIAL_TTL_SECONDS must be an integer between 60 and 86400.');
+}
+
+if (process.env.NODE_ENV === 'production' && (!webrtcStunUrls.length || !webrtcTurnUrls.length)) {
+  throw new Error('Configure both WEBRTC_STUN_URLS and WEBRTC_TURN_URLS in production.');
 }
 
 /**
@@ -51,10 +77,10 @@ const config = {
   signalingPath: process.env.SIGNALING_PATH ?? '/api/v1/signaling',
   notificationWsPath: process.env.NOTIFICATION_WS_PATH ?? '/api/v1/notifications/stream',
   trustProxy: process.env.TRUST_PROXY === 'true',
-  webrtcStunUrls: (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),
-  webrtcTurnUrls: (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean),
-  webrtcTurnUsername: process.env.WEBRTC_TURN_USERNAME,
-  webrtcTurnCredential: process.env.WEBRTC_TURN_CREDENTIAL,
+  webrtcStunUrls,
+  webrtcTurnUrls,
+  webrtcTurnSharedSecret,
+  webrtcTurnCredentialTtlSeconds,
 
 } as const;
 

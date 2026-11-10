@@ -5,8 +5,7 @@ import { PatientAppointmentStackParamList, DoctorAppointmentStackParamList } fro
 import { authService } from '../../services/auth';
 import apiClient from '../../services/api/apiClient';
 import {
-  connectAuthenticatedSignaling,
-  SignalingAuthenticationError,
+  AuthenticatedSignalingSession,
   SignalingMessage,
 } from '../../services/consultations/signaling';
 
@@ -22,15 +21,14 @@ export default function VideoCallScreen({ route, navigation }: Props) {
   }
   const { RTCView, RTCPeerConnection, mediaDevices } = nativeWebRtc;
   const { consultationId } = route.params;
-  const peer = useRef<any>(null); const socket = useRef<WebSocket | null>(null); const local = useRef<any>(null);
+  const peer = useRef<any>(null); const signaling = useRef<AuthenticatedSignalingSession | null>(null); const local = useRef<any>(null);
   const returningToDocumentation = useRef(false);
   const stopped = useRef(false);
   const [localStream, setLocalStream] = useState<any>(null); const [remoteStream, setRemoteStream] = useState<any>(null);
   const [state, setState] = useState<State>('connecting'); const [muted, setMuted] = useState(false); const [cameraOff, setCameraOff] = useState(false); const [seconds, setSeconds] = useState(0);
   const cleanup = useCallback((notify = true) => {
     stopped.current = true;
-    if (notify && socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify({ type: 'leave' }));
-    socket.current?.close(); socket.current = null; peer.current?.getSenders?.().forEach((sender: any) => sender.track?.stop()); peer.current?.close(); peer.current = null;
+    signaling.current?.stop(notify); signaling.current = null; peer.current?.getSenders?.().forEach((sender: any) => sender.track?.stop()); peer.current?.close(); peer.current = null;
     local.current?.getTracks().forEach((track: any) => track.stop()); local.current = null; setLocalStream(null); setRemoteStream(null);
   }, []);
   const end = useCallback(() => {
@@ -67,8 +65,10 @@ export default function VideoCallScreen({ route, navigation }: Props) {
         let token = await authService.getAccessToken(); if (!token) throw new Error('Your session has expired. Please sign in again.');
         const iceResponse = await apiClient.get(`/consultations/video/${consultationId}/ice-servers`, { headers: { Authorization: `Bearer ${token}` } });
         if (!alive || stopped.current) return;
-        const pc = new RTCPeerConnection({ iceServers: Array.isArray(iceResponse.data.iceServers) ? iceResponse.data.iceServers : [] }); peer.current = pc;
-        let consultationAuthorized = false;
+        const pc = new RTCPeerConnection({
+          iceServers: Array.isArray(iceResponse.data.iceServers) ? iceResponse.data.iceServers : [],
+          ...(process.env.EXPO_PUBLIC_WEBRTC_RELAY_ONLY === 'true' ? { iceTransportPolicy: 'relay' } : {}),
+        }); peer.current = pc;
         const pendingCandidates: unknown[] = [];
         const pendingRemoteCandidates: unknown[] = [];
         let hasRemoteDescription = false;
@@ -80,36 +80,40 @@ export default function VideoCallScreen({ route, navigation }: Props) {
           hasRemoteDescription = true;
         };
         const sendSignal = (message: object) => {
-          if (consultationAuthorized && socket.current?.readyState === WebSocket.OPEN) {
-            socket.current.send(JSON.stringify(message));
-          }
+          return signaling.current?.send(message) ?? false;
         };
         stream.getTracks().forEach((track: any) => pc.addTrack(track, stream));
         pc.ontrack = (event: any) => { if (event.streams[0]) setRemoteStream(event.streams[0]); };
         pc.onicecandidate = (event: any) => {
           if (!event.candidate) return;
-          if (consultationAuthorized) sendSignal({ type: 'ice-candidate', payload: event.candidate });
-          else pendingCandidates.push(event.candidate);
+          if (!sendSignal({ type: 'ice-candidate', payload: event.candidate })) pendingCandidates.push(event.candidate);
         };
         pc.onconnectionstatechange = () => {
-          if (!consultationAuthorized) return;
           const value = pc.connectionState;
           if (value === 'connected') setState('connected');
           else if (value === 'disconnected' || value === 'connecting') setState('reconnecting');
           else if (value === 'failed') { setState('failed'); cleanup(false); }
         };
-        const handleMessage = (msg: SignalingMessage) => { void (async () => {
+        let messageQueue = Promise.resolve();
+        const handleMessage = (msg: SignalingMessage) => {
+          messageQueue = messageQueue.then(async () => {
+            if (!alive || stopped.current) return;
           try {
             if (msg.type === 'participant-joined' && (msg.role === 'patient' || msg.role === 'doctor')) {
-              const offer = await pc.createOffer();
+              if (pc.signalingState === 'have-local-offer') {
+                await pc.setLocalDescription({ type: 'rollback' });
+              }
+              const offer = await pc.createOffer({ iceRestart: true });
               await pc.setLocalDescription(offer);
               sendSignal({ type: 'offer', payload: offer });
             } else if (msg.type === 'offer') {
+              hasRemoteDescription = false;
               await applyRemoteDescription(msg.payload);
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               sendSignal({ type: 'answer', payload: answer });
             } else if (msg.type === 'answer') {
+              hasRemoteDescription = false;
               await applyRemoteDescription(msg.payload);
             } else if (msg.type === 'ice-candidate') {
               if (hasRemoteDescription) await pc.addIceCandidate(msg.payload);
@@ -123,30 +127,36 @@ export default function VideoCallScreen({ route, navigation }: Props) {
             cleanup(false);
             setState('failed');
           }
-        })(); };
-        const handleClose = (event: CloseEvent) => {
-          if (!alive || stopped.current) return;
-          if (event.code === 4401) {
-            setState('failed');
-            Alert.alert('Signaling authentication failed', 'Please sign in again before rejoining this consultation.');
-          }
-          else if (peer.current) setState('reconnecting');
+          });
         };
-        const handleError = () => { setState('failed'); cleanup(false); };
-        let joined;
-        try {
-          joined = await connectAuthenticatedSignaling(SIGNALING_URL, token, consultationId, handleMessage, handleClose, handleError);
-        } catch (error) {
-          if (!(error instanceof SignalingAuthenticationError)) throw error;
-          token = await authService.refreshAccessToken() ?? '';
-          if (!token) throw new Error('Signaling rejected your session. Please sign in again.');
-          joined = await connectAuthenticatedSignaling(SIGNALING_URL, token, consultationId, handleMessage, handleClose, handleError);
-        }
-        if (!alive || stopped.current) { joined.socket.close(); return; }
-        socket.current = joined.socket;
-        consultationAuthorized = true;
-        setState(joined.peerPresent ? 'connecting' : 'waiting');
-        pendingCandidates.splice(0).forEach(payload => sendSignal({ type: 'ice-candidate', payload }));
+        const callSession = new AuthenticatedSignalingSession({
+          url: SIGNALING_URL,
+          consultationId,
+          getAccessToken: () => authService.getAccessToken(),
+          refreshAccessToken: () => authService.refreshAccessToken(),
+          onMessage: handleMessage,
+          onStateChange: (connectionState, peerPresent) => {
+            if (!alive || stopped.current) return;
+            if (connectionState === 'reconnecting') {
+              pendingCandidates.length = 0;
+              setState('reconnecting');
+            }
+            else if (connectionState === 'failed') setState('failed');
+            else {
+              setState(peerPresent ? 'connecting' : 'waiting');
+              for (const payload of pendingCandidates.splice(0)) {
+                if (!sendSignal({ type: 'ice-candidate', payload })) pendingCandidates.push(payload);
+              }
+            }
+          },
+          onFailure: (message) => {
+            cleanup(false);
+            setState('failed');
+            Alert.alert('Call connection lost', message);
+          },
+        });
+        signaling.current = callSession;
+        await callSession.start(token);
       } catch (error) { if (alive) { cleanup(false); setState('failed'); Alert.alert('Unable to start video call', error instanceof Error ? error.message : 'Please try again.'); } }
     }; void start(); return () => { alive = false; cleanup(false); };
   }, [cleanup, consultationId]);

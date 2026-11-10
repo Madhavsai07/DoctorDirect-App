@@ -8,6 +8,7 @@
     "typecheck": "tsc -b --pretty",
     "build": "tsc -b && vite build",
     "lint": "oxlint src",
+    "test:signaling": "node --test test-signaling.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
