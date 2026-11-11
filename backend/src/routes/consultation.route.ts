@@ -1,31 +1,45 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router, Request, Response, NextFunction, type RequestHandler } from 'express';
 import { requireAuth, requireRole, requireApprovedDoctor } from '../middleware/auth.middleware';
 import { consultationService } from '../services/consultation.service';
-import { createTurnCredentials } from '../services/turn-credentials.service';
+import { buildIceServers, type IceServerConfiguration } from '../services/ice-servers.service';
 import config from '../config/env';
+import type { DbUser } from '../repositories/user.repository';
+import type { DbConsultationDetail } from '../repositories/consultation.repository';
 
 const consultationRouter = Router();
 
-/** Returns ephemeral call transport configuration only to a consultation participant. */
-consultationRouter.get('/video/:consultationId/ice-servers', requireAuth, async (req, res, next) => {
-  try {
-    const consultation = await consultationService.getConsultationById(req.params.consultationId, req.user!);
-    if (consultation.status !== 'in_progress' || consultation.appointment_status !== 'in_progress') {
-      res.status(409).json({ error: 'This consultation is not available for a video call.' }); return;
+type ConsultationLookup = (
+  consultationId: string,
+  user: DbUser
+) => Promise<DbConsultationDetail>;
+
+export function createIceServerHandler(
+  iceConfiguration: IceServerConfiguration = config,
+  getAuthorizedConsultation: ConsultationLookup = (id, user) =>
+    consultationService.getConsultationById(id, user),
+): RequestHandler {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
     }
-    const iceServers: Array<{ urls: string[]; username?: string; credential?: string }> = [];
-    if (config.webrtcStunUrls.length) iceServers.push({ urls: config.webrtcStunUrls });
-    if (config.webrtcTurnUrls.length && config.webrtcTurnSharedSecret) {
-      const { username, credential } = createTurnCredentials(
-        req.user!.id,
-        config.webrtcTurnSharedSecret,
-        config.webrtcTurnCredentialTtlSeconds
-      );
-      iceServers.push({ urls: config.webrtcTurnUrls, username, credential });
+
+    try {
+      const consultation = await getAuthorizedConsultation(req.params.consultationId, req.user);
+      if (consultation.status !== 'in_progress' || consultation.appointment_status !== 'in_progress') {
+        res.status(409).json({ error: 'This consultation is not available for a video call.' });
+        return;
+      }
+      res.set('Cache-Control', 'no-store');
+      res.json({ iceServers: buildIceServers(iceConfiguration, req.user.id) });
+    } catch (error) {
+      next(error);
     }
-    res.json({ iceServers });
-  } catch (error) { next(error); }
-});
+  };
+}
+
+/** Returns ICE configuration only to an authorized participant in an active consultation. */
+consultationRouter.get('/video/:consultationId/ice-servers', requireAuth, createIceServerHandler());
 
 /**
  * POST /api/v1/consultations

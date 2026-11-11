@@ -1,19 +1,25 @@
 import {
   consultationRepository,
+  ConsultationRepository,
   DbConsultationDetail,
   UpdateConsultationDto,
 } from '../repositories/consultation.repository';
 import { doctorService } from './doctor.service';
 
 export class ConsultationService {
+  constructor(
+    private readonly consultationLookup: Pick<ConsultationRepository, 'findConsultationById'> = consultationRepository,
+    private readonly doctorLookup: Pick<typeof doctorService, 'getDoctorProfileByUserId'> = doctorService,
+  ) {}
+
   async getConsultationById(
     consultationId: string,
     user: { id: string; role: string }
   ): Promise<DbConsultationDetail> {
-    const consultation = await consultationRepository.findConsultationById(consultationId);
+    const consultation = await this.consultationLookup.findConsultationById(consultationId);
     if (!consultation) throw Object.assign(new Error('Consultation not found.'), { status: 404 });
     if (user.role === 'doctor') {
-      const doctor = await doctorService.getDoctorProfileByUserId(user.id);
+      const doctor = await this.doctorLookup.getDoctorProfileByUserId(user.id);
       if (consultation.doctor_id === doctor.doctor_id) return consultation;
     } else if (user.role === 'patient' && consultation.patient_user_id === user.id) return consultation;
     throw Object.assign(new Error('Forbidden: You are not a participant in this consultation.'), { status: 403 });

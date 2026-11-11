@@ -1,4 +1,6 @@
 import dotenv from 'dotenv';
+import { isIP } from 'node:net';
+import type { TurnAuthMode } from '../services/ice-servers.service';
 
 // Load .env before any other module reads process.env
 dotenv.config();
@@ -7,6 +9,9 @@ const databaseUrl = process.env.DATABASE_URL;
 const databaseSslSetting = process.env.DATABASE_SSL;
 const webrtcStunUrls = (process.env.WEBRTC_STUN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean);
 const webrtcTurnUrls = (process.env.WEBRTC_TURN_URLS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+const configuredTurnAuthMode = process.env.WEBRTC_TURN_AUTH_MODE?.trim().toLowerCase();
+const webrtcTurnUsername = process.env.WEBRTC_TURN_USERNAME?.trim();
+const webrtcTurnPassword = process.env.WEBRTC_TURN_PASSWORD;
 const webrtcTurnSharedSecret = process.env.WEBRTC_TURN_SHARED_SECRET;
 const webrtcTurnCredentialTtlSeconds = Number(process.env.WEBRTC_TURN_CREDENTIAL_TTL_SECONDS ?? '3600');
 const configuredCorsOrigins = (
@@ -35,20 +40,69 @@ if (webrtcStunUrls.some(url => !/^(stun|stuns):[^,\s@]+$/i.test(url) || contains
   throw new Error('WEBRTC_STUN_URLS must contain only STUN or STUNS URLs without embedded credentials.');
 }
 
-if (webrtcTurnUrls.some(url => !/^(turn|turns):[^,\s@]+$/i.test(url) || containsInlineCredentials(url))) {
-  throw new Error('WEBRTC_TURN_URLS must contain only TURN or TURNS URLs without embedded credentials.');
+function isValidTurnUrl(url: string): boolean {
+  const match = url.match(/^(turn|turns):([^,?\s@]+)(?:\?transport=(udp|tcp))?$/i);
+  if (!match || containsInlineCredentials(url)) return false;
+  const [, scheme, authority, transport] = match;
+  if (scheme.toLowerCase() === 'turns' && transport?.toLowerCase() === 'udp') return false;
+
+  const authorityMatch = authority.match(/^(?:\[([0-9a-f:.]+)\]|([a-z0-9.-]+)):(\d{1,5})$/i);
+  if (!authorityMatch) return false;
+  const [, ipv6Host, hostname, portText] = authorityMatch;
+  if (ipv6Host ? isIP(ipv6Host) !== 6 : !hostname?.split('.').every(
+    label => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label) && label.length <= 63
+  )) return false;
+
+  const port = Number(portText);
+  return port >= 1 && port <= 65535;
 }
 
-if (webrtcTurnUrls.length && (!webrtcTurnSharedSecret || webrtcTurnSharedSecret.length < 32)) {
-  throw new Error('WEBRTC_TURN_SHARED_SECRET must be at least 32 characters when TURN URLs are configured.');
+if (webrtcTurnUrls.some(url => !isValidTurnUrl(url))) {
+  throw new Error('WEBRTC_TURN_URLS must contain valid TURN or TURNS URLs with optional UDP/TCP transport and no embedded credentials.');
+}
+
+if (configuredTurnAuthMode && configuredTurnAuthMode !== 'static' && configuredTurnAuthMode !== 'rest') {
+  throw new Error('WEBRTC_TURN_AUTH_MODE must be either "static" or "rest".');
+}
+
+const webrtcTurnAuthMode: TurnAuthMode | undefined =
+  configuredTurnAuthMode === 'static' || configuredTurnAuthMode === 'rest'
+    ? configuredTurnAuthMode
+    : process.env.NODE_ENV === 'production' ? undefined : 'rest';
+
+if (process.env.NODE_ENV === 'production' && !configuredTurnAuthMode) {
+  throw new Error('WEBRTC_TURN_AUTH_MODE must be explicitly set to "static" or "rest" in production.');
+}
+
+if (webrtcTurnAuthMode === 'static') {
+  if (!webrtcTurnUrls.length) {
+    throw new Error('WEBRTC_TURN_URLS is required when WEBRTC_TURN_AUTH_MODE is "static".');
+  }
+  if (!webrtcTurnUsername) {
+    throw new Error('WEBRTC_TURN_USERNAME is required when WEBRTC_TURN_AUTH_MODE is "static".');
+  }
+  if (!webrtcTurnPassword?.trim()) {
+    throw new Error('WEBRTC_TURN_PASSWORD is required when WEBRTC_TURN_AUTH_MODE is "static".');
+  }
+} else if (webrtcTurnAuthMode === 'rest') {
+  if (webrtcTurnUsername || webrtcTurnPassword) {
+    throw new Error('Remove static TURN credentials when WEBRTC_TURN_AUTH_MODE is "rest".');
+  }
+  const implicitDevelopmentRestMode = !configuredTurnAuthMode && process.env.NODE_ENV !== 'production';
+  if (!webrtcTurnUrls.length && !implicitDevelopmentRestMode) {
+    throw new Error('WEBRTC_TURN_URLS is required when WEBRTC_TURN_AUTH_MODE is "rest".');
+  }
+  if (webrtcTurnUrls.length && (!webrtcTurnSharedSecret || webrtcTurnSharedSecret.length < 32)) {
+    throw new Error('WEBRTC_TURN_SHARED_SECRET must be at least 32 characters when REST TURN URLs are configured.');
+  }
 }
 
 if (!Number.isInteger(webrtcTurnCredentialTtlSeconds) || webrtcTurnCredentialTtlSeconds < 60 || webrtcTurnCredentialTtlSeconds > 86400) {
   throw new Error('WEBRTC_TURN_CREDENTIAL_TTL_SECONDS must be an integer between 60 and 86400.');
 }
 
-if (process.env.NODE_ENV === 'production' && (!webrtcStunUrls.length || !webrtcTurnUrls.length)) {
-  throw new Error('Configure both WEBRTC_STUN_URLS and WEBRTC_TURN_URLS in production.');
+if (process.env.NODE_ENV === 'production' && !webrtcStunUrls.length) {
+  throw new Error('Configure WEBRTC_STUN_URLS in production.');
 }
 
 /**
@@ -83,6 +137,9 @@ const config = {
   trustProxy: process.env.TRUST_PROXY === 'true',
   webrtcStunUrls,
   webrtcTurnUrls,
+  webrtcTurnAuthMode,
+  webrtcTurnUsername,
+  webrtcTurnPassword,
   webrtcTurnSharedSecret,
   webrtcTurnCredentialTtlSeconds,
 

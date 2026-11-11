@@ -18,7 +18,9 @@
     "test:cors": "ts-node test-cors-policy.ts",
     "test:signaling": "ts-node test-signaling-auth.ts",
     "test:turn": "ts-node test-turn-credentials.ts",
-    "test:webrtc-config": "ts-node test-webrtc-config.ts"
+    "test:webrtc-config": "ts-node test-webrtc-config.ts",
+    "test:ice-servers": "ts-node test-ice-servers.ts",
+    "test": "export NODE_ENV=development WEBRTC_TURN_AUTH_MODE=static WEBRTC_STUN_URLS=stun:stun.test.invalid:3478 WEBRTC_TURN_URLS=turn:test.invalid:3478?transport=udp WEBRTC_TURN_USERNAME=test-user WEBRTC_TURN_PASSWORD=test-password WEBRTC_TURN_SHARED_SECRET= CORS_ORIGINS=http://localhost:5173 && npm run test:auth-linking && npm run test:cors && npm run test:signaling && npm run test:turn && npm run test:webrtc-config && npm run test:ice-servers"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
