@@ -6,7 +6,7 @@ export interface DbAppointmentDetail {
   patient_id: string;
   doctor_id: string;
   slot_id: string;
-  status: 'booked' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'rescheduled' | 'no_show';
+  status: 'booked' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'expired' | 'rescheduled' | 'no_show';
   reason_for_visit: string | null;
   cancellation_reason: string | null;
   booked_at: Date;
@@ -41,6 +41,91 @@ export interface DbAppointmentDetail {
 }
 
 export class AppointmentRepository {
+  /**
+   * Expire unfinished appointments one hour after the booked start time. Completed
+   * consultations remain available for prescription finalization.
+   */
+  async expireOverdueAppointments(): Promise<number> {
+    const client = await pool.connect();
+    let expiredCount = 0;
+    try {
+      await client.query('BEGIN');
+      const candidates = await client.query<{
+        id: string;
+        patient_user_id: string;
+        doctor_user_id: string;
+      }>(
+        `SELECT a.id, pat_u.id AS patient_user_id, doc_u.id AS doctor_user_id
+         FROM appointments a
+         JOIN slots s ON s.id = a.slot_id
+         JOIN patients p ON p.id = a.patient_id
+         JOIN users pat_u ON pat_u.id = p.user_id
+         JOIN doctors d ON d.id = a.doctor_id
+         JOIN users doc_u ON doc_u.id = d.user_id
+         WHERE a.status IN ('booked', 'confirmed', 'in_progress', 'completed')
+           AND (s.date + s.start_time) <= LOCALTIMESTAMP - INTERVAL '1 hour'
+           AND NOT EXISTS (
+             SELECT 1 FROM consultations c
+             WHERE c.appointment_id = a.id AND c.status = 'completed'
+           )
+         FOR UPDATE OF a SKIP LOCKED`
+      );
+
+      for (const appointment of candidates.rows) {
+        const consultation = await client.query<{ id: string; status: string }>(
+          `SELECT id, status FROM consultations WHERE appointment_id = $1 FOR UPDATE`,
+          [appointment.id]
+        );
+        if (consultation.rows[0]?.status === 'completed') continue;
+
+        const cancelled = await client.query(
+          `UPDATE appointments
+           SET status = 'expired',
+               cancellation_reason = COALESCE(
+                 cancellation_reason,
+                 'Automatically cancelled because the consultation was not completed within one hour after the booked appointment time.'
+               ),
+               updated_at = NOW()
+           WHERE id = $1 AND status IN ('booked', 'confirmed', 'in_progress', 'completed')`,
+          [appointment.id]
+        );
+        if (!cancelled.rowCount) continue;
+
+        await client.query(
+          `UPDATE consultations
+           SET status = 'cancelled', ended_at = COALESCE(ended_at, NOW()), updated_at = NOW()
+           WHERE appointment_id = $1 AND status IN ('scheduled', 'waiting', 'in_progress')`,
+          [appointment.id]
+        );
+        await notificationService.createOnce({
+          recipientUserId: appointment.patient_user_id,
+          type: 'appointment_expired',
+          title: 'Appointment expired',
+          message: 'Your appointment expired because the consultation was not completed within one hour after the booked appointment time.',
+          appointmentId: appointment.id,
+          eventKey: `appointment-expired-patient:${appointment.id}`,
+        }, client);
+        await notificationService.createOnce({
+          recipientUserId: appointment.doctor_user_id,
+          type: 'appointment_expired',
+          title: 'Appointment expired',
+          message: 'This appointment expired because the consultation was not completed within one hour after the booked appointment time.',
+          appointmentId: appointment.id,
+          eventKey: `appointment-expired-doctor:${appointment.id}`,
+        }, client);
+        expiredCount += 1;
+      }
+
+      await client.query('COMMIT');
+      return expiredCount;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   /**
    * Find or create patient record for user
    */
@@ -281,7 +366,7 @@ export class AppointmentRepository {
         a.patient_id,
         a.doctor_id,
         a.slot_id,
-        a.status,
+        ${this.effectiveStatusExpression} AS status,
         a.reason_for_visit,
         a.cancellation_reason,
         a.booked_at,
@@ -317,6 +402,18 @@ export class AppointmentRepository {
     `;
   }
 
+  private get effectiveStatusExpression(): string {
+    return `CASE
+      WHEN a.status = 'completed' AND NOT EXISTS (
+        SELECT 1
+        FROM consultations c
+        JOIN prescriptions p ON p.consultation_id = c.id
+        WHERE c.appointment_id = a.id AND c.status = 'completed' AND p.is_signed = TRUE
+      ) THEN 'in_progress'
+      ELSE a.status
+    END`;
+  }
+
   /**
    * Get single appointment by ID
    */
@@ -339,10 +436,10 @@ export class AppointmentRepository {
     const params: any[] = [patientId];
 
     if (filter === 'upcoming') {
-      whereClause += ` AND a.status IN ('booked', 'confirmed', 'in_progress')
+      whereClause += ` AND ${this.effectiveStatusExpression} IN ('booked', 'confirmed', 'in_progress')
                        AND (s.date > CURRENT_DATE OR (s.date = CURRENT_DATE AND s.end_time > CURRENT_TIME))`;
     } else if (filter === 'past') {
-      whereClause += ` AND (a.status IN ('completed', 'cancelled', 'rescheduled', 'no_show')
+      whereClause += ` AND (${this.effectiveStatusExpression} IN ('completed', 'cancelled', 'expired', 'rescheduled', 'no_show')
                            OR (s.date < CURRENT_DATE OR (s.date = CURRENT_DATE AND s.end_time <= CURRENT_TIME)))`;
     }
 
@@ -370,10 +467,10 @@ export class AppointmentRepository {
     if (filter === 'today') {
       whereClause += ` AND s.date = CURRENT_DATE`;
     } else if (filter === 'upcoming') {
-      whereClause += ` AND a.status IN ('booked', 'confirmed', 'in_progress')
+      whereClause += ` AND ${this.effectiveStatusExpression} IN ('booked', 'confirmed', 'in_progress')
                        AND (s.date > CURRENT_DATE OR (s.date = CURRENT_DATE AND s.end_time > CURRENT_TIME))`;
     } else if (filter === 'past') {
-      whereClause += ` AND (a.status IN ('completed', 'cancelled', 'rescheduled', 'no_show')
+      whereClause += ` AND (${this.effectiveStatusExpression} IN ('completed', 'cancelled', 'expired', 'rescheduled', 'no_show')
                            OR (s.date < CURRENT_DATE OR (s.date = CURRENT_DATE AND s.end_time <= CURRENT_TIME)))`;
     }
 
@@ -390,13 +487,14 @@ export class AppointmentRepository {
 
   /**
    * Concurrency-safe status update adhering strictly to the appointment lifecycle:
-   * PENDING ('booked') -> CONFIRMED -> IN_PROGRESS -> COMPLETED
+   * PENDING ('booked') -> CONFIRMED -> IN_PROGRESS. The appointment is
+   * completed only when its consultation and prescription are finalized.
    * with CANCELLED / RESCHEDULED branches.
    * When cancelled, frees the future slot back to 'available'.
    */
   async updateStatus(params: {
     appointmentId: string;
-    newStatus: 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
+    newStatus: 'confirmed' | 'in_progress' | 'cancelled' | 'no_show';
     cancellationReason?: string;
     actorRole: 'patient' | 'doctor';
   }): Promise<DbAppointmentDetail> {
@@ -439,9 +537,10 @@ export class AppointmentRepository {
       const validTransitions: Record<string, string[]> = {
         booked: ['confirmed', 'cancelled'],
         confirmed: ['in_progress', 'cancelled', 'no_show'],
-        in_progress: ['completed', 'cancelled'],
+        in_progress: ['cancelled'],
         completed: [],
         cancelled: [],
+        expired: [],
         rescheduled: [],
         no_show: [],
       };

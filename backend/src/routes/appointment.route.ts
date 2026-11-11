@@ -114,7 +114,8 @@ appointmentRouter.patch(
 
 /**
  * PATCH /api/v1/appointments/:id/status
- * Doctor transitions status (in_progress, completed, cancelled).
+ * Doctor transitions status (in_progress, cancelled). Completing is reserved
+ * for finalizing the consultation prescription.
  * Body: { status, cancellation_reason? }
  */
 appointmentRouter.patch(

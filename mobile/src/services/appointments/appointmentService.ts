@@ -49,7 +49,7 @@ export async function confirmAppointmentApi(
 
 export async function updateAppointmentStatusApi(
   appointmentId: string,
-  status: AppointmentStatus,
+  status: Exclude<AppointmentStatus, 'completed'>,
   cancellation_reason?: string
 ): Promise<AppointmentDetailResponse> {
   const res = await apiClient.patch<AppointmentDetailResponse>(

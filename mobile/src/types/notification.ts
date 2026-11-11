@@ -1,5 +1,5 @@
 export type NotificationType =
-  | 'appointment_booked' | 'appointment_confirmed' | 'appointment_cancelled'
+  | 'appointment_booked' | 'appointment_confirmed' | 'appointment_cancelled' | 'appointment_expired'
   | 'appointment_rescheduled' | 'consultation_started' | 'consultation_completed'
   | 'prescription_finalized' | 'new_appointment_booked' | 'patient_cancelled'
   | 'upcoming_appointment_reminder';

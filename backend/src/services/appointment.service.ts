@@ -46,6 +46,7 @@ export class AppointmentService {
     patientUserId: string,
     filter?: 'upcoming' | 'past' | 'all'
   ): Promise<DbAppointmentDetail[]> {
+    await this.expireOverdueAppointments();
     const patientId = await appointmentRepository.ensurePatientProfile(patientUserId);
     return appointmentRepository.getPatientAppointments(patientId, filter);
   }
@@ -57,8 +58,13 @@ export class AppointmentService {
     doctorUserId: string,
     filter?: 'upcoming' | 'past' | 'today' | 'all'
   ): Promise<DbAppointmentDetail[]> {
+    await this.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     return appointmentRepository.getDoctorAppointments(doctorProfile.doctor_id, filter);
+  }
+
+  async expireOverdueAppointments(): Promise<number> {
+    return appointmentRepository.expireOverdueAppointments();
   }
 
   /**
@@ -68,6 +74,7 @@ export class AppointmentService {
     appointmentId: string,
     user: { id: string; role: string }
   ): Promise<DbAppointmentDetail> {
+    await this.expireOverdueAppointments();
     const appt = await appointmentRepository.getAppointmentById(appointmentId);
     if (!appt) {
       const err: any = new Error('Appointment not found');
@@ -102,6 +109,7 @@ export class AppointmentService {
    * Doctor confirms a booked appointment
    */
   async confirmAppointment(appointmentId: string, doctorUserId: string): Promise<DbAppointmentDetail> {
+    await this.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     const appt = await appointmentRepository.getAppointmentById(appointmentId);
     if (!appt) {
@@ -124,14 +132,15 @@ export class AppointmentService {
   }
 
   /**
-   * Doctor updates appointment status (in_progress, completed)
+   * Doctor updates appointment status. Completion is performed by prescription finalization.
    */
   async updateDoctorAppointmentStatus(
     appointmentId: string,
     doctorUserId: string,
-    newStatus: 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show',
+    newStatus: 'confirmed' | 'in_progress' | 'cancelled' | 'no_show',
     cancellationReason?: string
   ): Promise<DbAppointmentDetail> {
+    await this.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     const appt = await appointmentRepository.getAppointmentById(appointmentId);
     if (!appt) {
@@ -162,6 +171,7 @@ export class AppointmentService {
     user: { id: string; role: string },
     cancellationReason?: string
   ): Promise<DbAppointmentDetail> {
+    await this.expireOverdueAppointments();
     const appt = await appointmentRepository.getAppointmentById(appointmentId);
     if (!appt) {
       const err: any = new Error('Appointment not found');
@@ -214,6 +224,7 @@ export class AppointmentService {
     newSlotId: string,
     patientUserId: string
   ): Promise<DbAppointmentDetail> {
+    await this.expireOverdueAppointments();
     if (!newSlotId) {
       const err: any = new Error('New slot ID is required');
       err.status = 400;

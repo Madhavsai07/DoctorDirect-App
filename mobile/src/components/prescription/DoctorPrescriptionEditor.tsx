@@ -29,6 +29,7 @@ import {
   clearPrescriptionError,
   clearPrescriptionSuccessMsg,
 } from '../../store/slices/prescriptionSlice';
+import { loadDoctorAppointments } from '../../store/slices/appointmentSlice';
 import type { MedicineItem } from '../../types/prescription';
 
 interface Props {
@@ -201,7 +202,10 @@ export default function DoctorPrescriptionEditor({
     );
 
     // Then finalize to lock it permanently
-    dispatch(finalizePrescription(activePrescription.id));
+    const result = await dispatch(finalizePrescription(activePrescription.id));
+    if (finalizePrescription.fulfilled.match(result)) {
+      dispatch(loadDoctorAppointments('all'));
+    }
   };
 
   const isFinalized = activePrescription?.isSigned === true;

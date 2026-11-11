@@ -8,6 +8,7 @@ export type AppointmentStatus =
   | 'in_progress'
   | 'completed'
   | 'cancelled'
+  | 'expired'
   | 'rescheduled'
   | 'no_show';
 

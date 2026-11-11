@@ -4,13 +4,22 @@ import config from './config/env';
 import { authenticateSignalingToken, authorizeSignalingJoin } from './services/signaling.service';
 import { DbUser } from './repositories/user.repository';
 
-type Client = WebSocket & { user?: DbUser; consultationId?: string; role?: 'patient' | 'doctor' };
+type Client = WebSocket & {
+  user?: DbUser;
+  authToken?: string;
+  consultationId?: string;
+  role?: 'patient' | 'doctor';
+  sessionValidationTimer?: NodeJS.Timeout;
+  validatingSession?: boolean;
+};
 type SignalType = 'offer' | 'answer' | 'ice-candidate' | 'leave';
 export type SignalingDependencies = {
   authenticateSignalingToken: typeof authenticateSignalingToken;
   authorizeSignalingJoin: typeof authorizeSignalingJoin;
+  sessionRevalidationIntervalMs?: number;
 };
 const MAX_MESSAGE_BYTES = 64 * 1024;
+const DEFAULT_SESSION_REVALIDATION_INTERVAL_MS = 60_000;
 const rooms = new Map<string, Map<'patient' | 'doctor', Client>>();
 const defaultDependencies: SignalingDependencies = { authenticateSignalingToken, authorizeSignalingJoin };
 
@@ -51,13 +60,53 @@ function validCandidate(value: unknown): boolean { return !!value && typeof valu
 
 export function createSignalingServer(dependencies: SignalingDependencies = defaultDependencies) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+  const sessionRevalidationIntervalMs =
+    dependencies.sessionRevalidationIntervalMs ?? DEFAULT_SESSION_REVALIDATION_INTERVAL_MS;
+
+  function clearSessionValidation(client: Client) {
+    if (client.sessionValidationTimer) {
+      clearInterval(client.sessionValidationTimer);
+      delete client.sessionValidationTimer;
+    }
+    delete client.authToken;
+  }
+
+  function startSessionValidation(client: Client) {
+    client.sessionValidationTimer = setInterval(() => {
+      const token = client.authToken;
+      if (client.validatingSession || !token || client.readyState !== WebSocket.OPEN) return;
+      client.validatingSession = true;
+      void (async () => {
+        try {
+          const user = await dependencies.authenticateSignalingToken(token);
+          if (client.readyState !== WebSocket.OPEN) return;
+          if (!client.user || user.id !== client.user.id || user.role !== client.user.role) {
+            throw new Error('Authenticated identity changed.');
+          }
+          client.user = user;
+          if (client.consultationId) {
+            await dependencies.authorizeSignalingJoin(user, client.consultationId);
+          }
+        } catch {
+          leave(client);
+          client.close(4401, 'Authentication required');
+        } finally {
+          client.validatingSession = false;
+        }
+      })();
+    }, sessionRevalidationIntervalMs);
+    client.sessionValidationTimer.unref();
+  }
+
   wss.on('connection', (client: Client, req) => {
     let authenticated = false;
+    client.authToken = protocolToken(req) ?? undefined;
     traceSignaling('Verifying Supabase session for WebSocket connection.');
     void (async () => {
       try {
-        client.user = await dependencies.authenticateSignalingToken(protocolToken(req) ?? '');
+        client.user = await dependencies.authenticateSignalingToken(client.authToken ?? '');
         authenticated = true;
+        startSessionValidation(client);
         traceSignaling('Supabase session authenticated; sending authenticated acknowledgement.');
         send(client, { type: 'authenticated' });
       } catch {
@@ -74,8 +123,14 @@ export function createSignalingServer(dependencies: SignalingDependencies = defa
       }
       void handleMessage(client, raw.toString(), dependencies.authorizeSignalingJoin);
     });
-    client.on('close', () => leave(client));
-    client.on('error', () => leave(client));
+    client.on('close', () => {
+      clearSessionValidation(client);
+      leave(client);
+    });
+    client.on('error', () => {
+      clearSessionValidation(client);
+      leave(client);
+    });
   });
   return {
     handleUpgrade(req: IncomingMessage, socket: any, head: Buffer) {
@@ -85,7 +140,13 @@ export function createSignalingServer(dependencies: SignalingDependencies = defa
       wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
       return true;
     },
-    close: () => wss.close(),
+    close: () => {
+      for (const client of wss.clients) {
+        clearSessionValidation(client as Client);
+        client.close(1001, 'Server shutting down');
+      }
+      wss.close();
+    },
   };
 }
 async function handleMessage(

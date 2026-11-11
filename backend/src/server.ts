@@ -1,6 +1,7 @@
 import config from './config/env';
 import createApp from './app';
 import { notificationService } from './services/notification.service';
+import { appointmentService } from './services/appointment.service';
 import http from 'http';
 import { createSignalingServer } from './signaling';
 import { notificationSocketServer } from './notifications-socket';
@@ -37,4 +38,11 @@ server.listen(config.port, () => {
       console.error('[Notifications] Reminder check failed:', err)
     );
   }, 15 * 60 * 1000).unref();
+  const expireOverdueAppointments = () => {
+    appointmentService.expireOverdueAppointments().catch((err) =>
+      console.error('[Appointments] Expiration check failed:', err)
+    );
+  };
+  expireOverdueAppointments();
+  setInterval(expireOverdueAppointments, 60 * 1000).unref();
 });

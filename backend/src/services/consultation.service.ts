@@ -5,6 +5,7 @@ import {
   UpdateConsultationDto,
 } from '../repositories/consultation.repository';
 import { doctorService } from './doctor.service';
+import { appointmentRepository } from '../repositories/appointment.repository';
 
 export class ConsultationService {
   constructor(
@@ -16,6 +17,7 @@ export class ConsultationService {
     consultationId: string,
     user: { id: string; role: string }
   ): Promise<DbConsultationDetail> {
+    await appointmentRepository.expireOverdueAppointments();
     const consultation = await this.consultationLookup.findConsultationById(consultationId);
     if (!consultation) throw Object.assign(new Error('Consultation not found.'), { status: 404 });
     if (user.role === 'doctor') {
@@ -32,6 +34,7 @@ export class ConsultationService {
     appointmentId: string,
     doctorUserId: string
   ): Promise<DbConsultationDetail> {
+    await appointmentRepository.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     return consultationRepository.startOrGetConsultation(appointmentId, doctorProfile.doctor_id);
   }
@@ -46,6 +49,7 @@ export class ConsultationService {
     appointmentId: string,
     user: { id: string; role: string }
   ): Promise<DbConsultationDetail> {
+    await appointmentRepository.expireOverdueAppointments();
     const consultation = await consultationRepository.findConsultationByAppointmentId(appointmentId);
     if (!consultation) {
       const err: any = new Error('Consultation not found for this appointment');
@@ -83,6 +87,7 @@ export class ConsultationService {
     doctorUserId: string,
     dto: UpdateConsultationDto
   ): Promise<DbConsultationDetail> {
+    await appointmentRepository.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     return consultationRepository.updateDraft(consultationId, doctorProfile.doctor_id, dto);
   }
@@ -95,6 +100,7 @@ export class ConsultationService {
     doctorUserId: string,
     dto?: UpdateConsultationDto
   ): Promise<DbConsultationDetail> {
+    await appointmentRepository.expireOverdueAppointments();
     const doctorProfile = await doctorService.getDoctorProfileByUserId(doctorUserId);
     return consultationRepository.completeConsultation(consultationId, doctorProfile.doctor_id, dto);
   }

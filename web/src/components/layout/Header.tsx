@@ -8,6 +8,7 @@ import { clearAuth } from '@/store/slices/authSlice'
 export function Header({ roleLabel }: { roleLabel: string }) {
   const dispatch = useAppDispatch()
   const user = useAppSelector((state) => state.auth.user)
+  const unreadCount = useAppSelector((state) => state.notifications.unreadCount)
   const [error, setError] = useState('')
 
   const logout = async () => {
@@ -29,6 +30,7 @@ export function Header({ roleLabel }: { roleLabel: string }) {
       <div className="app-header__actions">
         <Link className="icon-button" to={`/${roleLabel.toLowerCase()}/notifications`} aria-label="Notifications">
           <Bell size={19} />
+          {unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
         </Link>
         <div className="account-summary">
           <span className="account-avatar">{user?.firstName.charAt(0) || roleLabel.charAt(0)}</span>

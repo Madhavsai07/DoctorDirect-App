@@ -3,6 +3,7 @@ import { useAppDispatch } from '@/app/hooks'
 import { clearAuth, setAuthError, setAuthLoading, setAuthUser } from '@/store/slices/authSlice'
 import { restoreUser } from '@/features/auth/authService'
 import { supabase } from '@/auth/supabaseClient'
+import { clearNotifications } from '@/store/slices/notificationSlice'
 
 export function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const dispatch = useAppDispatch()
@@ -34,6 +35,7 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
       if (!active) return
       if (event === 'SIGNED_OUT') {
         dispatch(clearAuth())
+        dispatch(clearNotifications())
       }
     })
 

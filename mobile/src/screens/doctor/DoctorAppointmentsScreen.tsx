@@ -60,6 +60,7 @@ function statusBadge(status: AppointmentStatus): { label: string; variant: Statu
     case 'in_progress': return { label: 'In Progress', variant: 'info' };
     case 'completed':   return { label: 'Completed', variant: 'neutral' };
     case 'cancelled':   return { label: 'Cancelled', variant: 'error' };
+    case 'expired':     return { label: 'Expired', variant: 'warning' };
     case 'rescheduled': return { label: 'Rescheduled', variant: 'info' };
     case 'no_show':     return { label: 'No Show', variant: 'neutral' };
     default:            return { label: status, variant: 'neutral' };
@@ -87,17 +88,21 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
     dispatch(loadDoctorAppointments('all'));
   }, [dispatch]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    const refreshInterval = setInterval(load, 60_000);
+    return () => clearInterval(refreshInterval);
+  }, [load]));
 
   // Partition
   const todayAppts = doctorAppointments.filter(
-    (a) => isToday(a.date) && a.status !== 'cancelled'
+    (a) => isToday(a.date) && !['cancelled', 'expired'].includes(a.status)
   );
   const upcomingAppts = doctorAppointments.filter(
-    (a) => !isToday(a.date) && isUpcoming(a.date, a.startTime) && a.status !== 'cancelled'
+    (a) => !isToday(a.date) && isUpcoming(a.date, a.startTime) && !['cancelled', 'expired'].includes(a.status)
   );
   const pastAppts = doctorAppointments.filter(
-    (a) => !isUpcoming(a.date, a.startTime) || a.status === 'cancelled' || a.status === 'completed'
+    (a) => !isUpcoming(a.date, a.startTime) || a.status === 'cancelled' || a.status === 'expired' || a.status === 'completed'
   );
 
   const displayed: Appointment[] =
@@ -123,18 +128,6 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
     setActioningId(null);
     if (updateAppointmentStatus.fulfilled.match(result)) {
       setFeedbackMsg(`Consultation started with ${appt.patientFullName}!`);
-      setTimeout(() => setFeedbackMsg(null), 3500);
-    }
-  };
-
-  const handleMarkCompleted = async (appt: Appointment) => {
-    setActioningId(appt.id);
-    const result = await dispatch(
-      updateAppointmentStatus({ appointmentId: appt.id, status: 'completed' })
-    );
-    setActioningId(null);
-    if (updateAppointmentStatus.fulfilled.match(result)) {
-      setFeedbackMsg(`Consultation completed for ${appt.patientFullName}!`);
       setTimeout(() => setFeedbackMsg(null), 3500);
     }
   };
@@ -391,28 +384,18 @@ export default function DoctorAppointmentsScreen({ navigation }: Props) {
                       </>
                     )}
                     {appt.status === 'in_progress' && (
-                      <>
-                        <Button
-                          title="Open Consultation"
-                          onPress={() =>
-                            navigation.navigate('DoctorConsultation', {
-                              appointmentId: appt.id,
-                            })
-                          }
-                          variant="secondary"
-                          size="sm"
-                          style={styles.actionBtn}
-                          disabled={isActioning}
-                        />
-                        <Button
-                          title={actioningId === appt.id ? 'Completing…' : 'Complete'}
-                          onPress={() => handleMarkCompleted(appt)}
-                          variant="outline"
-                          size="sm"
-                          style={styles.actionBtn}
-                          disabled={isActioning}
-                        />
-                      </>
+                      <Button
+                        title="Open Consultation"
+                        onPress={() =>
+                          navigation.navigate('DoctorConsultation', {
+                            appointmentId: appt.id,
+                          })
+                        }
+                        variant="secondary"
+                        size="sm"
+                        style={styles.actionBtn}
+                        disabled={isActioning}
+                      />
                     )}
                   </View>
                 </Card>

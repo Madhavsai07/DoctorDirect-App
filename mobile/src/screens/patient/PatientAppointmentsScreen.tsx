@@ -60,6 +60,7 @@ function statusBadge(status: AppointmentStatus): { label: string; variant: Statu
     case 'in_progress': return { label: 'In Progress', variant: 'info' };
     case 'completed':   return { label: 'Completed', variant: 'neutral' };
     case 'cancelled':   return { label: 'Cancelled', variant: 'error' };
+    case 'expired':     return { label: 'Expired', variant: 'warning' };
     case 'rescheduled': return { label: 'Rescheduled', variant: 'info' };
     case 'no_show':     return { label: 'No Show', variant: 'neutral' };
     default:            return { label: status, variant: 'neutral' };
@@ -86,13 +87,17 @@ export default function PatientAppointmentsScreen({ navigation }: Props) {
     dispatch(loadPatientAppointments('all'));
   }, [dispatch]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    const refreshInterval = setInterval(load, 60_000);
+    return () => clearInterval(refreshInterval);
+  }, [load]));
 
   const upcomingAppointments = patientAppointments.filter((a) =>
-    isUpcoming(a.date, a.startTime) && a.status !== 'cancelled' && a.status !== 'completed'
+    isUpcoming(a.date, a.startTime) && !['cancelled', 'expired', 'completed'].includes(a.status)
   );
   const pastAppointments = patientAppointments.filter(
-    (a) => !isUpcoming(a.date, a.startTime) || a.status === 'cancelled' || a.status === 'completed'
+    (a) => !isUpcoming(a.date, a.startTime) || a.status === 'cancelled' || a.status === 'expired' || a.status === 'completed'
   );
   const displayed = activeTab === 'upcoming' ? upcomingAppointments : pastAppointments;
 

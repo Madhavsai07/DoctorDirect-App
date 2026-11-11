@@ -251,6 +251,14 @@ export const api = {
     const { data } = await apiClient.post<{ prescription: Prescription }>('/prescriptions', body)
     return data.prescription
   },
+  async updatePrescription(id: string, body: {
+    diagnosis: string
+    medicines: Medicine[]
+    generalAdvice?: string
+  }) {
+    const { data } = await apiClient.patch<{ prescription: Prescription }>(`/prescriptions/${id}`, body)
+    return data.prescription
+  },
   async prescriptionsForConsultation(consultationId: string) {
     const { data } = await apiClient.get<{ prescription: Prescription | null }>(
       `/prescriptions/consultation/${consultationId}`,
@@ -258,7 +266,8 @@ export const api = {
     return data.prescription
   },
   async finalizePrescription(id: string) {
-    return apiClient.patch(`/prescriptions/${id}/finalize`, {})
+    const { data } = await apiClient.patch<{ prescription: Prescription }>(`/prescriptions/${id}/finalize`, {})
+    return data.prescription
   },
   async adminDoctors(status: 'pending' | 'approved' | 'rejected' | 'all', search: string) {
     const statuses = status === 'all' ? ['pending', 'approved', 'rejected'] : [status]
@@ -284,6 +293,10 @@ export const api = {
   async notifications() {
     const { data } = await apiClient.get<{ notifications: NotificationItem[] }>('/notifications')
     return data.notifications
+  },
+  async unreadNotificationCount() {
+    const { data } = await apiClient.get<{ unreadCount: number }>('/notifications/unread-count')
+    return data.unreadCount
   },
   async markAllNotificationsRead() {
     return apiClient.patch('/notifications/read-all')
@@ -318,6 +331,7 @@ export interface Prescription {
 export interface Consultation {
   id: string
   appointment_id: string
+  appointment_status: string
   status: string
   symptoms: string | null
   diagnosis: string | null
@@ -340,4 +354,10 @@ export interface NotificationItem {
   message: string
   created_at: string
   is_read: boolean
+  recipient_user_id?: string
+  appointment_id?: string | null
+  consultation_id?: string | null
+  prescription_id?: string | null
+  doctor_id?: string | null
+  read_at?: string | null
 }

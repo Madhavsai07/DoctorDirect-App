@@ -128,7 +128,7 @@ export class ConsultationRepository {
   }
 
   /**
-   * Initializes or fetches a consultation for an appointment.
+   * Initializes or fetches a consultation for an active appointment.
    * Atomically sets appointment status to 'in_progress' if currently 'confirmed'.
    */
   async startOrGetConsultation(appointmentId: string, doctorId: string): Promise<DbConsultationDetail> {
@@ -167,21 +167,15 @@ export class ConsultationRepository {
         throw err;
       }
 
-      if (appt.status === 'cancelled') {
-        const err: any = new Error('Cannot start consultation for a cancelled appointment');
-        err.status = 400;
-        throw err;
-      }
-
       // If appointment is confirmed, advance to in_progress
       if (appt.status === 'confirmed') {
         await client.query(
           `UPDATE appointments SET status = 'in_progress', updated_at = NOW() WHERE id = $1`,
           [appointmentId]
         );
-      } else if (appt.status !== 'in_progress' && appt.status !== 'completed') {
+      } else if (appt.status !== 'in_progress') {
         const err: any = new Error(`Cannot start consultation for appointment in ${appt.status} status`);
-        err.status = 400;
+        err.status = appt.status === 'completed' ? 409 : 400;
         throw err;
       }
 
@@ -292,7 +286,8 @@ export class ConsultationRepository {
   }
 
   /**
-   * Finalizes consultation and marks both consultation and appointment as 'completed'.
+   * Submits the consultation. The appointment remains in progress until its
+   * prescription is finalized.
    */
   async completeConsultation(
     consultationId: string,
@@ -382,14 +377,6 @@ export class ConsultationRepository {
         consultationId,
         eventKey: `consultation-completed-patient:${consultationId}`,
       }, client);
-
-      // Advance appointment to completed
-      await client.query(
-        `UPDATE appointments
-         SET status = 'completed', updated_at = NOW()
-         WHERE id = $1`,
-        [existing.appointment_id]
-      );
 
       await client.query('COMMIT');
     } catch (err) {

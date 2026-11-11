@@ -34,11 +34,12 @@ const patientUser: DbUser = {
   updated_at: new Date(),
 };
 
-function testDependencies(): NotificationSocketDependencies {
+function testDependencies(state: { patientTokenValid: boolean }): NotificationSocketDependencies {
   return {
+    sessionRevalidationIntervalMs: 20,
     authenticateToken: async (token: string) => {
       if (token === 'doctor-token') return doctorUser;
-      if (token === 'patient-token') return patientUser;
+      if (token === 'patient-token' && state.patientTokenValid) return patientUser;
       throw new Error('Invalid token');
     },
   };
@@ -46,7 +47,8 @@ function testDependencies(): NotificationSocketDependencies {
 
 async function run() {
   const server = http.createServer();
-  const notificationWs = createNotificationSocketServer(testDependencies());
+  const sessionState = { patientTokenValid: true };
+  const notificationWs = createNotificationSocketServer(testDependencies(sessionState));
 
   server.on('upgrade', (req, socket, head) => {
     if (!notificationWs.handleUpgrade(req, socket, head)) {
@@ -88,22 +90,34 @@ async function run() {
     assert.equal(docAuthMsg.userId, doctorUser.id);
     console.log('PASS: Authenticates doctor via subprotocol');
 
-    // 4. Connection with valid token via query param
-    const patientWs = new WebSocket(`${wsUrl}?token=patient-token`);
+    // 4. Query-string tokens are rejected to prevent credential leakage in logs.
+    {
+      const ws = new WebSocket(`${wsUrl}?token=patient-token`);
+      ws.on('error', () => undefined);
+      const code = await new Promise<number>((resolve) => {
+        ws.once('close', resolve);
+        ws.once('error', () => resolve(1006));
+      });
+      assert.equal(code, 1006);
+      console.log('PASS: Rejects authentication token in query string');
+    }
+
+    // 5. Valid tokens use the WebSocket subprotocol.
+    const patientWs = new WebSocket(wsUrl, ['dd-auth', 'patient-token']);
     const [patAuthMsgRaw] = await once(patientWs, 'message');
     const patAuthMsg = JSON.parse(patAuthMsgRaw.toString());
     assert.equal(patAuthMsg.type, 'authenticated');
     assert.equal(patAuthMsg.userId, patientUser.id);
-    console.log('PASS: Authenticates patient via query parameter');
+    console.log('PASS: Authenticates patient via subprotocol');
 
-    // 5. Ping / Pong
+    // 6. Ping / Pong
     doctorWs.send(JSON.stringify({ type: 'ping' }));
     const [pongMsgRaw] = await once(doctorWs, 'message');
     const pongMsg = JSON.parse(pongMsgRaw.toString());
     assert.equal(pongMsg.type, 'pong');
     console.log('PASS: Responds to ping with pong');
 
-    // 6. Broadcast notification targeted only to doctor
+    // 7. Broadcast notification targeted only to doctor
     const doctorNotif: DbNotification = {
       id: 'notif-1',
       recipient_user_id: doctorUser.id,
@@ -134,13 +148,20 @@ async function run() {
     assert.equal(patientReceived, false, 'Patient must NOT receive doctor notifications');
     console.log('PASS: Real-time notification routed accurately to recipient');
 
-    // 7. Broadcast read
+    // 8. Broadcast read
     notificationWs.broadcastRead(doctorUser.id, 'notif-1');
     const [readMsgRaw] = await once(doctorWs, 'message');
     const readMsg = JSON.parse(readMsgRaw.toString());
     assert.equal(readMsg.type, 'notification_read');
     assert.equal(readMsg.id, 'notif-1');
     console.log('PASS: Real-time notification_read broadcast received');
+
+    // 9. A revoked or expired session closes an already-authenticated socket.
+    sessionState.patientTokenValid = false;
+    const [revokedCode] = await once(patientWs, 'close');
+    assert.equal(revokedCode, 4401);
+    assert.equal(notificationWs.getConnectedCount(patientUser.id), 0);
+    console.log('PASS: Revalidates connected notification sessions');
 
     doctorWs.close();
     patientWs.close();

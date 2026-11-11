@@ -116,6 +116,25 @@ async function testUnauthorizedParticipant() {
   });
 }
 
+async function testSessionRevokedAfterConnection() {
+  let tokenValid = true;
+  await withServer(dependencies({
+    sessionRevalidationIntervalMs: 20,
+    authorizeSignalingJoin: async () => ({ consultation: {} as any, role: 'patient' }),
+    authenticateSignalingToken: async (token) => {
+      if (token !== 'valid-token' || !tokenValid) throw new Error('Invalid or revoked session');
+      return patient;
+    },
+  }), async (url) => {
+    const socket = await open(url, ['dd-auth', 'valid-token']);
+    await nextMessage(socket);
+    socket.send(JSON.stringify({ type: 'join', consultationId: '22222222-2222-2222-2222-222222222222' }));
+    assert.equal((await nextMessage(socket)).type, 'joined');
+    tokenValid = false;
+    assert.equal(await closes(socket), 4401);
+  });
+}
+
 function testSecureUpgradePolicy() {
   const request = (encrypted: boolean, forwarded?: string) => ({
     socket: { encrypted },
@@ -135,6 +154,7 @@ void (async () => {
   await testInvalidToken();
   await testSuccessfulHandshake();
   await testUnauthorizedParticipant();
+  await testSessionRevokedAfterConnection();
   console.log('Signaling authentication checks passed.');
 })().catch((error) => {
   console.error(error);

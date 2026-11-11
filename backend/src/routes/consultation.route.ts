@@ -118,7 +118,7 @@ consultationRouter.patch(
 /**
  * PATCH /api/v1/consultations/:id/complete
  * Doctor finalizes and completes the consultation.
- * Transitions both consultation and appointment to 'completed'.
+ * Submits the consultation. The appointment stays in progress until the prescription is finalized.
  * Body: { symptoms?, clinical_notes?, diagnosis?, treatment_plan?, follow_up_instructions?, prescription? }
  */
 consultationRouter.patch(

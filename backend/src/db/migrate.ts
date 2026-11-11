@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import config from '../config/env';
 import { pool } from './pool';
+import { assertMigrationCommandAllowed } from './migration-safety';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../../database/migrations');
 const SEEDS_DIR = path.resolve(__dirname, '../../../database/seeds');
@@ -136,8 +138,10 @@ export async function runSeed(): Promise<void> {
 }
 
 export async function printMigrationStatus(): Promise<void> {
-  await ensureMigrationsTable();
-  const applied = await getAppliedMigrations();
+  const ledger = await pool.query<{ table_name: string | null }>(
+    "SELECT to_regclass('_migrations')::text AS table_name"
+  );
+  const applied = ledger.rows[0]?.table_name ? await getAppliedMigrations() : [];
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql') && !f.endsWith('_down.sql'))
@@ -169,6 +173,7 @@ if (require.main === module) {
 
   (async () => {
     try {
+      assertMigrationCommandAllowed(command, config.nodeEnv);
       if (command === 'up') {
         await runMigrationsUp();
       } else if (command === 'down') {

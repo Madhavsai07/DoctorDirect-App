@@ -80,9 +80,10 @@ All database commands are run from the `backend/` directory:
 | `npm run migrate:reset` | Reset database | Rolls back applied migrations and re-applies all migrations from scratch |
 | `npm run seed` | Insert specialization catalog | Adds available specialties without creating demo users or records |
 
-`npm run migrate:status` currently creates `_migrations` if it does not exist.
-It is therefore not a strictly read-only inspection command. For an audit,
-query the migration ledger directly in a read-only transaction.
+`npm run migrate:status` is read-only and reports every migration as pending if
+the `_migrations` ledger does not exist. In production, `migrate:down`,
+`migrate:reset`, and `seed` are disabled by the backend. Apply only reviewed,
+forward-only migrations after a verified backup.
 
 ### Remote PostgreSQL TLS
 
@@ -144,6 +145,7 @@ npm run migrate:status
      WHERE status NOT IN ('cancelled', 'rescheduled');
    ```
    This prevents two active appointments from claiming the same slot while retaining cancelled or rescheduled appointment records.
+   Migration `013_expired_appointments.sql` adds the `expired` appointment status for appointments whose consultation was not submitted within one hour after the booked start time. Expired appointments are also excluded from the active-slot unique index.
 
 2. **User Deletion and Related Records**:
    Migration 011 changes the relevant account-owned foreign keys to `ON DELETE CASCADE`. Deleting a row from `users` permanently deletes linked profiles and dependent scheduling, appointment, consultation, prescription, and notification data. This is destructive and should only be used when permanent erasure is intended.
@@ -161,6 +163,9 @@ npm run migrate:status
 ---
 
 ## Reset / Rebuild from Scratch
+Development databases only. The backend refuses to run this command in
+production; never use reset or rollback commands against production data.
+
 To completely rebuild the schema from an empty database:
 ```bash
 cd backend

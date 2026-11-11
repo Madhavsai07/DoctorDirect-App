@@ -13,6 +13,10 @@ const configuredTurnAuthMode = process.env.WEBRTC_TURN_AUTH_MODE?.trim().toLower
 const webrtcTurnUsername = process.env.WEBRTC_TURN_USERNAME?.trim();
 const webrtcTurnPassword = process.env.WEBRTC_TURN_PASSWORD;
 const webrtcTurnSharedSecret = process.env.WEBRTC_TURN_SHARED_SECRET;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabasePublishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const trustProxy = process.env.TRUST_PROXY === 'true';
 const webrtcTurnCredentialTtlSeconds = Number(process.env.WEBRTC_TURN_CREDENTIAL_TTL_SECONDS ?? '3600');
 const configuredCorsOrigins = (
   process.env.CORS_ORIGINS ??
@@ -32,6 +36,13 @@ if (databaseSslSetting && !['true', 'false'].includes(databaseSslSetting)) {
 
 if (process.env.NODE_ENV === 'production' && !databaseUrl) {
   throw new Error('DATABASE_URL is required in production.');
+}
+
+if (process.env.NODE_ENV === 'production') {
+  if (!supabaseUrl) throw new Error('SUPABASE_URL is required in production.');
+  if (!supabasePublishableKey) throw new Error('SUPABASE_PUBLISHABLE_KEY is required in production.');
+  if (!supabaseServiceRoleKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required in production.');
+  if (!trustProxy) throw new Error('TRUST_PROXY must be set to "true" in production.');
 }
 
 const containsInlineCredentials = (url: string) => /(?:^|[?&])(?:username|credential|password)=/i.test(url);
@@ -126,15 +137,15 @@ const config = {
   databaseSslCaBase64: process.env.DATABASE_SSL_CA_BASE64,
 
   // ── Added in the Authentication milestone ────────────────────────────────
-  supabaseUrl: process.env.SUPABASE_URL,
-  supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  supabaseUrl,
+  supabasePublishableKey,
+  supabaseServiceRoleKey,
 
   // WebRTC media is peer-to-peer; this server only relays ephemeral signaling.
   // Production deployments must terminate TLS before accepting WebSocket upgrades.
   signalingPath: process.env.SIGNALING_PATH ?? '/api/v1/signaling',
   notificationWsPath: process.env.NOTIFICATION_WS_PATH ?? '/api/v1/notifications/stream',
-  trustProxy: process.env.TRUST_PROXY === 'true',
+  trustProxy,
   webrtcStunUrls,
   webrtcTurnUrls,
   webrtcTurnAuthMode,

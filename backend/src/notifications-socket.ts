@@ -1,19 +1,27 @@
 import { IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import config from './config/env';
+import { isSecureSignalingUpgrade } from './signaling';
 import { authenticateSignalingToken } from './services/signaling.service';
 import { DbUser } from './repositories/user.repository';
 import { DbNotification } from './repositories/notification.repository';
 
-type Client = WebSocket & { user?: DbUser };
+type Client = WebSocket & {
+  user?: DbUser;
+  authToken?: string;
+  sessionValidationTimer?: NodeJS.Timeout;
+  validatingSession?: boolean;
+};
 
 export type NotificationSocketDependencies = {
   authenticateToken: (token: string) => Promise<DbUser>;
+  sessionRevalidationIntervalMs?: number;
 };
 
 const defaultDependencies: NotificationSocketDependencies = {
   authenticateToken: authenticateSignalingToken,
 };
+const DEFAULT_SESSION_REVALIDATION_INTERVAL_MS = 60_000;
 
 function traceNotificationWs(message: string) {
   if (config.nodeEnv !== 'production') {
@@ -36,18 +44,7 @@ function extractToken(req: IncomingMessage): string | null {
     return subprotocols[1];
   }
 
-  // 2. URL search parameters (e.g. ?token=...)
-  if (req.url) {
-    try {
-      const url = new URL(req.url, 'http://localhost');
-      const token = url.searchParams.get('token');
-      if (token) return token;
-    } catch {
-      // Ignore parse failure
-    }
-  }
-
-  // 3. Authorization header
+  // 2. Authorization header (available to native clients; browsers use subprotocols)
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7).trim();
@@ -61,6 +58,8 @@ export function createNotificationSocketServer(
 ) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 32 * 1024 });
   const clients = new Map<string, Set<Client>>();
+  const sessionRevalidationIntervalMs =
+    dependencies.sessionRevalidationIntervalMs ?? DEFAULT_SESSION_REVALIDATION_INTERVAL_MS;
 
   function addClient(userId: string, client: Client) {
     let set = clients.get(userId);
@@ -72,18 +71,49 @@ export function createNotificationSocketServer(
   }
 
   function removeClient(client: Client) {
-    if (!client.user?.id) return;
-    const set = clients.get(client.user.id);
-    if (set) {
-      set.delete(client);
-      if (set.size === 0) {
-        clients.delete(client.user.id);
+    if (client.sessionValidationTimer) {
+      clearInterval(client.sessionValidationTimer);
+      delete client.sessionValidationTimer;
+    }
+    delete client.authToken;
+    if (client.user?.id) {
+      const set = clients.get(client.user.id);
+      if (set) {
+        set.delete(client);
+        if (set.size === 0) {
+          clients.delete(client.user.id);
+        }
       }
     }
+    delete client.user;
+  }
+
+  function startSessionValidation(client: Client) {
+    client.sessionValidationTimer = setInterval(() => {
+      if (client.validatingSession || !client.authToken || client.readyState !== WebSocket.OPEN) return;
+      client.validatingSession = true;
+      void dependencies.authenticateToken(client.authToken)
+        .then((user) => {
+          if (client.readyState !== WebSocket.OPEN) return;
+          if (!client.user || user.id !== client.user.id || user.role !== client.user.role) {
+            throw new Error('Authenticated identity changed.');
+          }
+          client.user = user;
+        })
+        .catch(() => {
+          removeClient(client);
+          client.close(4401, 'Authentication required');
+        })
+        .finally(() => {
+          client.validatingSession = false;
+        });
+    }, sessionRevalidationIntervalMs);
+    client.sessionValidationTimer.unref();
   }
 
   wss.on('connection', (client: Client, req: IncomingMessage) => {
     const token = extractToken(req);
+    client.authToken = token ?? undefined;
     traceNotificationWs('Validating user session for notification stream connection.');
 
     void (async () => {
@@ -92,6 +122,7 @@ export function createNotificationSocketServer(
         const user = await dependencies.authenticateToken(token);
         client.user = user;
         addClient(user.id, client);
+        startSessionValidation(client);
         traceNotificationWs(`Notification stream authenticated for user ${user.id} (${user.role}).`);
         send(client, { type: 'authenticated', userId: user.id });
       } catch (err: any) {
@@ -125,10 +156,7 @@ export function createNotificationSocketServer(
 
       if (!isPathMatch) return false;
 
-      const forwarded = String(req.headers['x-forwarded-proto'] ?? '')
-        .split(',')[0]
-        .trim();
-      if (config.nodeEnv === 'production' && !(req.socket as any).encrypted && forwarded !== 'https') {
+      if (!isSecureSignalingUpgrade(req)) {
         socket.destroy();
         return true;
       }
@@ -186,6 +214,10 @@ export function createNotificationSocketServer(
     },
 
     close() {
+      for (const client of wss.clients) {
+        removeClient(client as Client);
+        client.close(1001, 'Server shutting down');
+      }
       wss.close();
       clients.clear();
     },

@@ -2,6 +2,7 @@ import { DbUser } from '../repositories/user.repository';
 import { consultationRepository, DbConsultationDetail } from '../repositories/consultation.repository';
 import { getSupabaseClient } from './supabase';
 import { resolveApplicationUser } from './application-user.service';
+import { appointmentRepository } from '../repositories/appointment.repository';
 
 export async function authenticateSignalingToken(token: string): Promise<DbUser> {
   const { data, error } = await getSupabaseClient().auth.getUser(token);
@@ -17,6 +18,7 @@ export async function authenticateSignalingToken(token: string): Promise<DbUser>
 }
 
 export async function authorizeSignalingJoin(user: DbUser, consultationId: string): Promise<{ consultation: DbConsultationDetail; role: 'patient' | 'doctor' }> {
+  await appointmentRepository.expireOverdueAppointments();
   const consultation = await consultationRepository.findConsultationById(consultationId);
   if (!consultation) throw Object.assign(new Error('Consultation not found.'), { status: 404 });
   if (consultation.status !== 'in_progress' || consultation.appointment_status !== 'in_progress') {

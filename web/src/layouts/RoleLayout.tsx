@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Header } from '@/components/layout/Header'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { RealtimeNotifications } from '@/features/notifications/RealtimeNotifications'
 import type { NavigationItem } from '@/features/patient/navigation'
 
 interface RoleLayoutProps {
@@ -23,6 +24,7 @@ export function RoleLayout({ roleLabel, items }: RoleLayoutProps) {
       />
       <div className="workspace__main">
         <Header roleLabel={roleLabel} />
+        <RealtimeNotifications />
         <main className="workspace__content">
           <Outlet />
         </main>

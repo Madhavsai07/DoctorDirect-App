@@ -147,7 +147,7 @@ export default function DoctorConsultationScreen({ route, navigation }: Props) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <AppIcon name="back" size={20} color={colors.text.primary} /><Text style={styles.backText}>Appointments</Text>
           </TouchableOpacity>
-          <Badge label={activeConsultation?.status === 'completed' ? 'Finalized' : 'In Progress'} variant={activeConsultation?.status === 'completed' ? 'success' : 'info'} size="sm" />
+          <Badge label={activeConsultation?.status === 'completed' ? 'Consultation Complete' : 'In Progress'} variant={activeConsultation?.status === 'completed' ? 'success' : 'info'} size="sm" />
         </View>
         <Text style={styles.screenTitle}>Consultation ready</Text>
         <Text style={styles.screenSubtitle}>Review appointment details, then join the private video consultation.</Text>
@@ -177,7 +177,7 @@ export default function DoctorConsultationScreen({ route, navigation }: Props) {
           <Text style={styles.backText}>Appointments</Text>
         </TouchableOpacity>
         <Badge
-          label={isCompleted ? 'Finalized' : 'In Progress'}
+          label={isCompleted ? 'Consultation Complete' : 'In Progress'}
           variant={isCompleted ? 'success' : 'info'}
           size="sm"
         />

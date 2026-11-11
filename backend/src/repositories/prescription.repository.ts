@@ -216,13 +216,20 @@ export class PrescriptionRepository {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const locked = await client.query<DbPrescription & { patient_user_id: string; appointment_id: string }>(
-        `SELECT p.*, pat_u.id AS patient_user_id, c.appointment_id
+      const locked = await client.query<DbPrescription & {
+        patient_user_id: string;
+        appointment_id: string;
+        consultation_status: string;
+        appointment_status: string;
+      }>(
+        `SELECT p.*, pat_u.id AS patient_user_id, c.appointment_id,
+                c.status AS consultation_status, a.status AS appointment_status
          FROM prescriptions p
          JOIN patients pat ON p.patient_id = pat.id
          JOIN users pat_u ON pat.user_id = pat_u.id
          JOIN consultations c ON p.consultation_id = c.id
-         WHERE p.id = $1 FOR UPDATE OF p`,
+         JOIN appointments a ON c.appointment_id = a.id
+         WHERE p.id = $1 FOR UPDATE OF p, c, a`,
         [prescriptionId]
       );
       const pres = locked.rows[0];
@@ -231,10 +238,20 @@ export class PrescriptionRepository {
         throw Object.assign(new Error('Forbidden: You are not the prescribing doctor'), { status: 403 });
       }
       if (pres.is_signed) throw Object.assign(new Error('Prescription is already finalised'), { status: 400 });
+      if (pres.consultation_status !== 'completed') {
+        throw Object.assign(new Error('Complete the consultation before finalizing its prescription'), { status: 409 });
+      }
+      if (!['in_progress', 'completed'].includes(pres.appointment_status)) {
+        throw Object.assign(new Error('This appointment cannot be completed in its current status'), { status: 409 });
+      }
 
       await client.query(
         `UPDATE prescriptions SET is_signed = TRUE, signed_at = NOW(), updated_at = NOW() WHERE id = $1`,
         [prescriptionId]
+      );
+      await client.query(
+        `UPDATE appointments SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+        [pres.appointment_id]
       );
       await notificationService.createOnce({
         recipientUserId: pres.patient_user_id,

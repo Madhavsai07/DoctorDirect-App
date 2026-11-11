@@ -54,7 +54,8 @@ a { color: inherit; text-decoration: none; }
 .app-header__title { color: #2a4058; font-size: 14px; font-weight: 700; }
 .app-header__actions { display: flex; align-items: center; gap: 13px; }
 .preview-pill { padding: 5px 9px; border-radius: 20px; background: #fff6e2; color: #a87516; font-size: 10px; font-weight: 750; letter-spacing: .3px; }
-.icon-button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #e8edf1; border-radius: 10px; background: white; color: #73869a; }
+.icon-button { position: relative; display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #e8edf1; border-radius: 10px; background: white; color: #73869a; }
+.notification-count { position: absolute; top: -6px; right: -7px; display: grid; min-width: 17px; height: 17px; place-items: center; padding: 0 4px; border: 2px solid #fff; border-radius: 20px; background: #dc2626; color: #fff; font-size: 9px; font-weight: 750; line-height: 1; }
 .account-button { display: flex; align-items: center; gap: 9px; padding: 3px 4px; border: 0; background: transparent; color: #65778a; font-size: 12px; }
 .account-button:disabled { cursor: not-allowed; opacity: .8; }
 .account-avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: #e5f1f0; color: #287e79; font-size: 13px; font-weight: 750; }
@@ -173,7 +174,7 @@ a { color: inherit; text-decoration: none; }
 .confirmation-dialog h2 { margin: 0 0 8px; color: #1f344b; font-size: 19px; }
 .confirmation-dialog p { color: #708196; font-size: 13px; line-height: 1.6; }
 .confirmation-dialog__actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
-.button { min-height: 39px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 700; }
+.button { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .button--secondary { border-color: #dce5eb; background: white; color: #4e6378; }
 .button--primary { background: #197f7b; color: white; }
 
@@ -290,7 +291,7 @@ body { background: #f8fafc; color: #0f172a; }
 .appointment-tabs { display: flex; gap: 4px; padding: 4px; border: 1px solid #e2e8f0; border-radius: 9px; background: #f1f5f9; }
 .appointment-tab { min-height: 34px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #64748b; font-size: 11px; font-weight: 650; }
 .appointment-tab--active { background: #fff; color: #1e40af; box-shadow: 0 1px 5px #0f172a12; }
-.text-button { padding: 4px 0; border: 0; background: transparent; color: #1e40af; font-size: 12px; font-weight: 650; }
+.text-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 0; border: 0; background: transparent; color: #1e40af; font-size: 12px; font-weight: 650; white-space: nowrap; }
 .directory-tools { display: flex; gap: 11px; margin-bottom: 18px; }
 .search-field { display: flex; min-height: 43px; flex: 1; align-items: center; gap: 9px; padding: 0 11px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #64748b; }
 .search-field:focus-within { border-color: #3b82f6; box-shadow: 0 0 0 3px #3b82f624; }
@@ -343,6 +344,15 @@ body { background: #f8fafc; color: #0f172a; }
 .success-message { margin: 12px 0; padding: 11px 13px; border: 1px solid #bbf7d0; border-radius: 9px; background: #f0fdf4; color: #166534; font-size: 12px; }
 .inline-error { color: #b91c1c; font-size: 11px; }
 .page-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.notification-toast { position: fixed; z-index: 80; top: 92px; right: 24px; display: flex; width: min(390px, calc(100vw - 32px)); align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid #dce8f0; border-radius: 13px; background: #fff; box-shadow: 0 14px 40px #172b4d2b; animation: notification-toast-enter .22s ease-out; }
+.notification-toast__content { display: flex; min-width: 0; flex: 1; align-items: flex-start; gap: 11px; padding: 0; border: 0; background: transparent; text-align: left; }
+.notification-toast__icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5f3; color: #147d78; }
+.notification-toast__text { display: grid; min-width: 0; gap: 4px; padding-top: 1px; }
+.notification-toast__text strong { color: #1d344e; font-size: 12px; line-height: 1.4; }
+.notification-toast__text span { display: -webkit-box; overflow: hidden; color: #64778a; font-size: 11px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.notification-toast__close { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #73869a; }
+.notification-toast__close:hover { background: #f1f5f9; color: #334155; }
+@keyframes notification-toast-enter { from { opacity: 0; transform: translateY(-9px); } to { opacity: 1; transform: translateY(0); } }
 .profile-card { display: flex; align-items: flex-start; gap: 18px; }
 .profile-card__avatar { display: grid; width: 58px; height: 58px; flex: 0 0 auto; place-items: center; border-radius: 18px; background: #eff6ff; color: #1e40af; font-size: 19px; font-weight: 750; }
 .profile-card__details { min-width: 0; }
@@ -416,6 +426,22 @@ body { background: #f8fafc; color: #0f172a; }
 .medicine-fields { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
 .medicine-fields label { display: grid; gap: 5px; color: #475569; font-size: 10px; }
 .medicine-fields input { min-width: 0; min-height: 37px; padding: 7px; border: 1px solid #cbd5e1; border-radius: 7px; font-size: 11px; }
+.prescription-summary { margin: 12px 0; padding: 16px; border: 1px solid #dbe4ef; border-radius: 11px; background: #fff; }
+.prescription-summary__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; color: #172554; font-size: 13px; }
+.prescription-summary__header span { padding: 4px 9px; border-radius: 20px; background: #eff6ff; color: #1d4ed8; font-size: 10px; font-weight: 700; }
+.prescription-summary__details { margin: 13px 0; }
+.prescription-summary__details div { display: grid; grid-template-columns: 105px minmax(0, 1fr); gap: 10px; padding: 9px 0; border-top: 1px solid #edf2f7; border-bottom: 1px solid #edf2f7; }
+.prescription-summary__details dt { color: #64748b; font-size: 11px; font-weight: 650; }
+.prescription-summary__details dd { min-width: 0; margin: 0; color: #1e293b; font-size: 12px; overflow-wrap: anywhere; }
+.prescription-table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 9px; }
+.prescription-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; }
+.prescription-table th { padding: 10px; background: #f8fafc; color: #475569; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.prescription-table td { padding: 10px; border-top: 1px solid #edf2f7; color: #334155; font-size: 11px; line-height: 1.5; vertical-align: top; overflow-wrap: anywhere; }
+.prescription-table tbody tr:nth-child(even) { background: #fbfdff; }
+.prescription-table__empty { color: #64748b; text-align: center; }
+.prescription-summary__advice { margin-top: 13px; padding: 11px 12px; border-radius: 8px; background: #f8fafc; }
+.prescription-summary__advice strong { color: #475569; font-size: 10px; }
+.prescription-summary__advice p { margin: 5px 0 0; color: #334155; font-size: 12px; line-height: 1.55; }
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 15px 0; }
 .warning-message { margin: 12px 0; padding: 10px 12px; border: 1px solid #fde68a; border-radius: 8px; background: #fffbeb; color: #92400e; font-size: 12px; }
 .verification-panel { display: flex; align-items: flex-start; gap: 14px; padding: 20px; border: 1px solid #bfdbfe; border-radius: 13px; background: #eff6ff; color: #1e40af; }

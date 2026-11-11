@@ -129,7 +129,7 @@ export const rescheduleAppointment = createAsyncThunk(
 export const updateAppointmentStatus = createAsyncThunk(
   'appointment/updateStatus',
   async (
-    payload: { appointmentId: string; status: AppointmentStatus; cancellation_reason?: string },
+    payload: { appointmentId: string; status: Exclude<AppointmentStatus, 'completed'>; cancellation_reason?: string },
     { rejectWithValue }
   ) => {
     try {

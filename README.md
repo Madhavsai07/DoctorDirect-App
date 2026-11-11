@@ -29,6 +29,19 @@ For providers that issue static long-term credentials, select `WEBRTC_TURN_AUTH_
 
 Production requires both STUN and TURN URLs. When TLS terminates at a trusted reverse proxy, set backend `TRUST_PROXY=true`; signaling upgrades require a secure connection. For an isolated relay verification build, set mobile `EXPO_PUBLIC_WEBRTC_RELAY_ONLY=true` or web `VITE_WEBRTC_RELAY_TEST_ENABLED=true`, make a real call, and verify that the selected candidate pair uses a relay. Return the setting to `false` after testing. Relay-only mode is not proof of TURN connectivity unless a call succeeds over a relay. The web client uses `VITE_SIGNALING_URL` when signaling is hosted separately; otherwise it derives the signaling URL from `VITE_API_BASE_URL`.
 
+### Production backend safeguards
+
+Set `NODE_ENV=production` in the hosting service. In production mode, the
+backend requires `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `TRUST_PROXY=true` to start. Keep the
+service-role key and TURN secrets in backend-only environment settings. The API applies per-process
+request limits (a general API limit and a stricter failed-authentication
+limit); use a shared rate-limit store before running multiple backend
+instances. Existing WebSocket connections revalidate their Supabase session
+and account status every minute. Production migration rollback, reset, and
+seed commands are disabled; use a reviewed forward-only migration after a
+verified backup.
+
 ## Architecture
 
 ```text

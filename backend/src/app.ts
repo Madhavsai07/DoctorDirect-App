@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import config from './config/env';
 import { createCorsMiddleware } from './middleware/cors.middleware';
 import healthRouter from './routes/health.route';
@@ -17,9 +18,33 @@ import { errorHandler } from './middleware/errorHandler';
  */
 function createApp(): Application {
   const app = express();
+  app.disable('x-powered-by');
 
   // ── Middleware ────────────────────────────────────────────────────────────
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self)');
+    if (config.nodeEnv === 'production') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
   app.use(createCorsMiddleware(config.corsOrigins));
+  app.use('/api/v1/auth', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    skipSuccessfulRequests: true,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }));
+  app.use('/api/v1', rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 1200,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }));
   app.use(express.json());
 
   // ── Routes ────────────────────────────────────────────────────────────────

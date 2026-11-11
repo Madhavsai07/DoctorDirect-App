@@ -3,14 +3,19 @@ import { CalendarDays, Check, Clock3, FileText, RefreshCw, Search, Stethoscope, 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { api, type AdminDoctor, type Appointment, type AvailabilityWindow, type Consultation, type Doctor, type NotificationItem, type Prescription, type ScheduleOverride, type ScheduleSlot, type Slot } from '@/api/services'
+import { api, type AdminDoctor, type Appointment, type AvailabilityWindow, type Consultation, type Doctor, type Prescription, type ScheduleOverride, type ScheduleSlot, type Slot } from '@/api/services'
 import { ApiError } from '@/api/errors'
-import { useAppSelector } from '@/app/hooks'
+import { useAppDispatch, useAppSelector } from '@/app/hooks'
 import { ErrorDisplay } from '@/components/feedback/ErrorDisplay'
 import { LoadingIndicator } from '@/components/common/LoadingIndicator'
 import { EmptyState } from '@/components/feedback/EmptyState'
 import { ConfirmationDialog } from '@/components/feedback/ConfirmationDialog'
 import { VideoCallDialog } from '@/features/consultation/VideoCallDialog'
+import {
+  markAllNotificationsRead,
+  markNotificationRead,
+  syncNotifications,
+} from '@/store/slices/notificationSlice'
 
 const appointmentStatusLabel: Record<string, string> = {
   booked: 'Booked',
@@ -18,6 +23,7 @@ const appointmentStatusLabel: Record<string, string> = {
   in_progress: 'In progress',
   completed: 'Completed',
   cancelled: 'Cancelled',
+  expired: 'Expired',
   rescheduled: 'Rescheduled',
   no_show: 'No show',
 }
@@ -46,6 +52,28 @@ function readableTime(value: string) {
   })
 }
 
+function parsePrescriptionMedicines(value: Prescription['medicines']) {
+  const parsed: unknown = typeof value === 'string' ? JSON.parse(value) as unknown : value
+  if (!Array.isArray(parsed)) throw new Error('The saved prescription has an invalid medicine list.')
+  return parsed.map((item) => {
+    if (!item || typeof item !== 'object') throw new Error('The saved prescription contains invalid medicine details.')
+    const medicine = item as Record<string, unknown>
+    return {
+      name: typeof medicine.name === 'string' ? medicine.name : '',
+      dosage: typeof medicine.dosage === 'string' ? medicine.dosage : '',
+      frequency: typeof medicine.frequency === 'string' ? medicine.frequency : '',
+      duration: typeof medicine.duration === 'string' ? medicine.duration : '',
+      instructions: typeof medicine.instructions === 'string' ? medicine.instructions : '',
+    }
+  })
+}
+
+function normalizePrescription(prescription: Prescription | null) {
+  return prescription
+    ? { ...prescription, medicines: parsePrescriptionMedicines(prescription.medicines) }
+    : null
+}
+
 function PageHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return (
     <div className="page-heading">
@@ -70,7 +98,7 @@ function PageNotice({ message, onRetry }: { message: string; onRetry?: () => voi
 function StatusBadge({ status }: { status: string }) {
   const tone = ['confirmed', 'completed', 'approved'].includes(status)
     ? 'success'
-    : ['cancelled', 'rejected', 'no_show'].includes(status)
+    : ['cancelled', 'expired', 'rejected', 'no_show'].includes(status)
       ? 'error'
       : ['in_progress'].includes(status)
         ? 'info'
@@ -95,6 +123,7 @@ function AppointmentCard({
   onCancel,
   onConsult,
   onReschedule,
+  prescriptionSummary,
 }: {
   appointment: Appointment
   kind: 'patient' | 'doctor'
@@ -102,6 +131,7 @@ function AppointmentCard({
   onCancel?: (appointment: Appointment) => void
   onConsult?: (appointment: Appointment) => void
   onReschedule?: (appointment: Appointment) => void
+  prescriptionSummary?: Prescription | null
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -140,6 +170,20 @@ function AppointmentCard({
               {appointment.patient_phone ? ` · ${appointment.patient_phone}` : ''}
               {appointment.patient_allergies ? ` · Allergies: ${appointment.patient_allergies}` : ''}
             </p>
+          )}
+          {kind === 'doctor' && prescriptionSummary && (
+            <p className="data-card__detail">
+              {prescriptionSummary.is_signed ? 'Finalized prescription' : 'Prescription draft'}
+              {Array.isArray(prescriptionSummary.medicines) && prescriptionSummary.medicines.length
+                ? ` · ${prescriptionSummary.medicines.length} medication${prescriptionSummary.medicines.length === 1 ? '' : 's'}`
+                : ''}
+              {Array.isArray(prescriptionSummary.medicines) && prescriptionSummary.medicines.length > 0
+                ? ` · ${prescriptionSummary.medicines.map((medicine) => medicine.name).filter(Boolean).join(', ')}`
+                : ''}
+            </p>
+          )}
+          {kind === 'doctor' && prescriptionSummary === null && (
+            <p className="data-card__detail">No prescription created yet.</p>
           )}
           {error && <p className="inline-error" role="alert">{error}</p>}
         </div>
@@ -185,7 +229,11 @@ export function PatientDashboardPage() {
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load appointments.') }
     finally { setLoading(false) }
   }, [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const refreshInterval = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(refreshInterval)
+  }, [load])
   const upcoming = appointments.filter((item) => ['booked', 'confirmed', 'in_progress'].includes(item.status))
   return (
     <section className="page-content">
@@ -409,7 +457,11 @@ export function PatientAppointmentsPage() {
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load appointments.') }
     finally { setLoading(false) }
   }, [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const refreshInterval = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(refreshInterval)
+  }, [load])
 
   const startReschedule = async (appointment: Appointment) => {
     setMoving(appointment)
@@ -463,11 +515,11 @@ export function PatientAppointmentsPage() {
   }
   const upcoming = appointments.filter((item) =>
     new Date(`${item.slot_date}T${item.slot_start_time}`).getTime() >= scheduleReferenceTime &&
-    !['cancelled', 'completed'].includes(item.status)
+    !['cancelled', 'expired', 'completed'].includes(item.status)
   )
   const past = appointments.filter((item) =>
     new Date(`${item.slot_date}T${item.slot_start_time}`).getTime() < scheduleReferenceTime ||
-    ['cancelled', 'completed'].includes(item.status)
+    ['cancelled', 'expired', 'completed'].includes(item.status)
   )
   const displayedAppointments = activeTab === 'upcoming' ? upcoming : past
 
@@ -604,7 +656,11 @@ export function DoctorDashboardPage() {
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load appointments.') }
     finally { setLoading(false) }
   }, [])
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const refreshInterval = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(refreshInterval)
+  }, [load])
   const active = appointments.filter((item) => ['booked', 'confirmed', 'in_progress'].includes(item.status))
   return <section className="page-content">
     <PageHeading eyebrow="DOCTOR WORKSPACE" title="Practice overview" description="Manage your schedule and patient appointments." />
@@ -620,11 +676,14 @@ export function DoctorDashboardPage() {
 
 export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'appointments' | 'prescriptions' }) {
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [prescriptionReadyVisitIds, setPrescriptionReadyVisitIds] = useState<string[]>([])
+  const [prescriptionSummaries, setPrescriptionSummaries] = useState<Record<string, Prescription | null>>({})
   const [appointmentView, setAppointmentView] = useState<'all' | 'active' | 'cancelled' | 'history'>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Appointment | null>(null)
   const [consultation, setConsultation] = useState<{ id: string; diagnosis: string; symptoms: string; clinical_notes: string; treatment_plan: string; follow_up_instructions: string } | null>(null)
+  const [consultationCompleted, setConsultationCompleted] = useState(false)
   const consultationRequestId = useRef(0)
   const [callOpen, setCallOpen] = useState(false)
   const [callConsultationId, setCallConsultationId] = useState<string | null>(null)
@@ -633,11 +692,48 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
   const [saving, setSaving] = useState(false)
   const load = useCallback(async () => {
     setError('')
-    try { setAppointments(await api.appointments('doctor')) }
+    try {
+      const visits = await api.appointments('doctor')
+      setAppointments(visits)
+      if (focus === 'prescriptions') {
+        const candidateVisits = visits.filter((item) => ['in_progress', 'completed'].includes(item.status))
+        const summaryResults = await Promise.allSettled(candidateVisits.map(async (visit) => {
+          try {
+            const visitConsultation = await api.consultation(visit.id)
+            if (visitConsultation.status !== 'completed') return null
+            const visitPrescription = await api.prescriptionsForConsultation(visitConsultation.id)
+            return [visit.id, normalizePrescription(visitPrescription)] as const
+          } catch (requestError) {
+            if (requestError instanceof ApiError && requestError.status === 404) return null
+            throw requestError
+          }
+        }))
+        const summaries: Array<readonly [string, Prescription | null]> = []
+        const readyVisitIds: string[] = []
+        let summaryLoadFailed = false
+        for (const result of summaryResults) {
+          if (result.status === 'fulfilled') {
+            if (result.value) {
+              readyVisitIds.push(result.value[0])
+              summaries.push(result.value)
+            }
+          } else summaryLoadFailed = true
+        }
+        setPrescriptionReadyVisitIds(readyVisitIds)
+        setPrescriptionSummaries(Object.fromEntries(summaries))
+        if (summaryLoadFailed) {
+          setError('Some completed consultations could not be loaded. Refresh and try again.')
+        }
+      }
+    }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load appointments.') }
     finally { setLoading(false) }
-  }, [])
-  useEffect(() => { void load() }, [load])
+  }, [focus])
+  useEffect(() => {
+    void load()
+    const refreshInterval = window.setInterval(() => void load(), 60_000)
+    return () => window.clearInterval(refreshInterval)
+  }, [load])
 
   const openConsultation = async (appointment: Appointment) => {
     const requestId = ++consultationRequestId.current
@@ -645,13 +741,18 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
     setCallOpen(false)
     setCallConsultationId(null)
     setConsultation(null)
+    setConsultationCompleted(false)
     setError('')
     setPrescription(null)
+    setMedicines([{ name: '', dosage: '', frequency: '', duration: '', instructions: '' }])
     try {
       let existing
       try { existing = await api.consultation(appointment.id) }
       catch (requestError) {
         if (!(requestError instanceof ApiError && requestError.status === 404)) throw requestError
+        if (appointment.status === 'completed') {
+          throw new Error('This completed appointment has no consultation record to view.')
+        }
         existing = await api.startConsultation(appointment.id)
       }
       if (requestId !== consultationRequestId.current) return
@@ -664,12 +765,19 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         follow_up_instructions: existing.follow_up_instructions ?? '',
       }
       setConsultation(activeConsultation)
-      if (existing.status === 'in_progress') {
+      setConsultationCompleted(existing.status === 'completed')
+      if (existing.status === 'in_progress' && existing.appointment_status === 'in_progress') {
         setSelected({ ...appointment, status: 'in_progress' })
         setCallConsultationId(existing.id)
       }
       if (existing.status === 'completed') {
-        try { setPrescription(await api.prescriptionsForConsultation(existing.id)) }
+        try {
+          const existingPrescription = normalizePrescription(await api.prescriptionsForConsultation(existing.id))
+          setPrescription(existingPrescription)
+          if (existingPrescription) {
+            setMedicines(parsePrescriptionMedicines(existingPrescription.medicines))
+          }
+        }
         catch (requestError) { if (!(requestError instanceof ApiError && requestError.status === 404)) throw requestError }
       }
     } catch (requestError) {
@@ -694,7 +802,7 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
       if (complete) await api.completeConsultation(consultation.id, payload)
       else await api.updateConsultation(consultation.id, payload)
       if (complete && selected) {
-        setSelected({ ...selected, status: 'completed' })
+        setConsultationCompleted(true)
         await load()
       }
       if (complete) setNotice('Consultation completed. You can now create a prescription.')
@@ -704,12 +812,12 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
   }
   const [notice, setNotice] = useState('')
   const activeAppointments = appointments.filter((item) => ['booked', 'confirmed', 'in_progress'].includes(item.status))
-  const cancelledAppointments = appointments.filter((item) => item.status === 'cancelled')
+  const cancelledAppointments = appointments.filter((item) => ['cancelled', 'expired'].includes(item.status))
   const historyAppointments = appointments.filter((item) =>
-    !['booked', 'confirmed', 'in_progress', 'cancelled'].includes(item.status)
+    !['booked', 'confirmed', 'in_progress', 'cancelled', 'expired'].includes(item.status)
   )
   const visibleAppointments = focus === 'prescriptions'
-    ? appointments.filter((item) => item.status === 'completed')
+    ? appointments.filter((item) => prescriptionReadyVisitIds.includes(item.id))
     : appointmentView === 'all'
       ? appointments
       : appointmentView === 'active'
@@ -720,7 +828,7 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         ? historyAppointments
         : []
 
-  const createPrescription = async () => {
+  const savePrescription = async () => {
     if (!consultation) return
     if (medicines.some((item) => !item.name.trim() || !item.dosage.trim() || !item.frequency.trim() || !item.duration.trim())) {
       setError('Complete the medicine name, dosage, frequency, and duration.')
@@ -728,22 +836,35 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
     }
     setSaving(true)
     try {
-      setPrescription(await api.createPrescription({
-        consultationId: consultation.id,
-        diagnosis: consultation.diagnosis,
-        medicines,
-      }))
-      setNotice('Prescription draft saved.')
+      const body = { diagnosis: consultation.diagnosis, medicines }
+      const savedPrescription = normalizePrescription(prescription
+        ? await api.updatePrescription(prescription.id, body)
+        : await api.createPrescription({ consultationId: consultation.id, ...body }))
+      setPrescription(savedPrescription)
+      setNotice(prescription ? 'Prescription draft updated.' : 'Prescription draft saved.')
+      if (selected) setPrescriptionSummaries((current) => ({ ...current, [selected.id]: savedPrescription }))
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to create prescription.') }
     finally { setSaving(false) }
   }
   const finalizePrescription = async () => {
     if (!prescription) return
+    if (medicines.some((item) => !item.name.trim() || !item.dosage.trim() || !item.frequency.trim() || !item.duration.trim())) {
+      setError('Complete the medicine name, dosage, frequency, and duration.')
+      return
+    }
     setSaving(true)
+    setError('')
     try {
-      await api.finalizePrescription(prescription.id)
-      setPrescription({ ...prescription, is_signed: true })
+      await api.updatePrescription(prescription.id, {
+        diagnosis: consultation?.diagnosis ?? prescription.diagnosis,
+        medicines,
+      })
+      const finalizedPrescription = normalizePrescription(await api.finalizePrescription(prescription.id))
+      setPrescription(finalizedPrescription)
+      if (selected) setSelected({ ...selected, status: 'completed' })
+      if (selected) setPrescriptionSummaries((current) => ({ ...current, [selected.id]: finalizedPrescription }))
       setNotice('Prescription finalized and signed.')
+      await load()
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to finalize prescription.') }
     finally { setSaving(false) }
   }
@@ -762,7 +883,7 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
         : <div className="appointment-tabs" role="tablist" aria-label="Filter appointments">
           {([
             ['active', `Active (${activeAppointments.length})`],
-            ['cancelled', `Canceled (${cancelledAppointments.length})`],
+            ['cancelled', `Cancelled / expired (${cancelledAppointments.length})`],
             ['history', `History (${historyAppointments.length})`],
             ['all', `All (${appointments.length})`],
           ] as const).map(([view, label]) => (
@@ -781,13 +902,13 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
       <button className="text-button" type="button" onClick={() => void load()}><RefreshCw size={15} /> Refresh</button>
     </div>
     {error && <PageNotice message={error} />}
-    {loading ? <LoadingIndicator label={focus === 'prescriptions' ? 'Loading completed visits' : 'Loading appointments'} /> : visibleAppointments.map((item) => <AppointmentCard key={item.id} appointment={item} kind="doctor" onChanged={() => void load()} onConsult={(value) => void openConsultation(value)} />)}
+    {loading ? <LoadingIndicator label={focus === 'prescriptions' ? 'Loading completed visits' : 'Loading appointments'} /> : visibleAppointments.map((item) => <AppointmentCard key={item.id} appointment={item} kind="doctor" prescriptionSummary={prescriptionSummaries[item.id]} onChanged={() => void load()} onConsult={(value) => void openConsultation(value)} />)}
     {!loading && !visibleAppointments.length && (
       <EmptyState
         title={focus === 'prescriptions'
           ? 'No completed visits'
           : appointmentView === 'cancelled'
-            ? 'No canceled appointments'
+            ? 'No cancelled or expired appointments'
           : appointmentView === 'active'
             ? 'No active appointments'
             : appointmentView === 'history'
@@ -824,23 +945,63 @@ export function DoctorAppointmentsPage({ focus = 'appointments' }: { focus?: 'ap
                 ['clinical_notes', 'Clinical notes'],
                 ['treatment_plan', 'Treatment plan'],
                 ['follow_up_instructions', 'Follow-up instructions'],
-              ] as const).map(([field, label]) => <label className="field-label" key={field}>{label}<textarea rows={field === 'clinical_notes' ? 4 : 2} value={consultation[field]} onChange={(event) => setConsultation({ ...consultation, [field]: event.target.value })} /></label>)}
+              ] as const).map(([field, label]) => <label className="field-label" key={field}>{label}<textarea rows={field === 'clinical_notes' ? 4 : 2} value={consultation[field]} disabled={consultationCompleted} onChange={(event) => setConsultation({ ...consultation, [field]: event.target.value })} /></label>)}
+              {consultationCompleted && <p className="data-card__detail">Consultation submitted and locked against further edits.</p>}
             </div>
             <div className="modal-actions">
-              {selected.status !== 'completed' && <button className="button button--secondary" type="button" disabled={saving} onClick={() => void saveConsultation(false)}>Save draft</button>}
-              {selected.status !== 'completed' && <button className="button button--primary" type="button" disabled={saving} onClick={() => void saveConsultation(true)}>Complete consultation</button>}
+              {!consultationCompleted && <button className="button button--secondary" type="button" disabled={saving} onClick={() => void saveConsultation(false)}>Save draft</button>}
+              {!consultationCompleted && <button className="button button--primary" type="button" disabled={saving} onClick={() => void saveConsultation(true)}>Complete consultation</button>}
             </div>
-            {selected.status === 'completed' && (
+            {consultationCompleted && (
               <div className="prescription-editor">
                 <h3>Prescription</h3>
-                {prescription?.is_signed ? <div className="success-message">This prescription has been finalized.</div> : (
+                {prescription?.is_signed && <div className="success-message">This prescription has been finalized and is read-only.</div>}
+                {prescription && (
+                  <div className="prescription-summary">
+                    <div className="prescription-summary__header">
+                      <strong>{prescription.is_signed ? 'Finalized prescription' : 'Prescription draft'}</strong>
+                      <span>{prescription.is_signed ? 'Signed' : 'Not signed'}</span>
+                    </div>
+                    <dl className="prescription-summary__details">
+                      <div><dt>Diagnosis</dt><dd>{prescription.diagnosis || 'Not specified'}</dd></div>
+                    </dl>
+                    <div className="prescription-table-wrap">
+                      <table className="prescription-table">
+                        <thead>
+                          <tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr>
+                        </thead>
+                        <tbody>
+                          {parsePrescriptionMedicines(prescription.medicines).map((medicine, index) => (
+                            <tr key={`${medicine.name}-${index}`}>
+                              <td data-label="Medicine">{medicine.name || '—'}</td>
+                              <td data-label="Dosage">{medicine.dosage || '—'}</td>
+                              <td data-label="Frequency">{medicine.frequency || '—'}</td>
+                              <td data-label="Duration">{medicine.duration || '—'}</td>
+                              <td data-label="Instructions">{medicine.instructions || '—'}</td>
+                            </tr>
+                          ))}
+                          {!parsePrescriptionMedicines(prescription.medicines).length && (
+                            <tr><td className="prescription-table__empty" colSpan={5}>No medicines listed.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    {prescription.general_advice && (
+                      <div className="prescription-summary__advice">
+                        <strong>General advice</strong>
+                        <p>{prescription.general_advice}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!prescription?.is_signed && (
                   <>
                     {medicines.map((medicine, index) => <div className="medicine-fields" key={index}>
                       {(['name', 'dosage', 'frequency', 'duration', 'instructions'] as const).map((key) => <label key={key}>{key.charAt(0).toUpperCase() + key.slice(1)}<input value={medicine[key]} onChange={(event) => setMedicines(medicines.map((item, i) => i === index ? { ...item, [key]: event.target.value } : item))} /></label>)}
                     </div>)}
                     <div className="modal-actions">
                       <button className="button button--secondary" type="button" onClick={() => setMedicines([...medicines, { name: '', dosage: '', frequency: '', duration: '', instructions: '' }])}>Add medicine</button>
-                      {!prescription && <button className="button button--primary" disabled={saving} type="button" onClick={() => void createPrescription()}>Save prescription draft</button>}
+                      <button className="button button--primary" disabled={saving} type="button" onClick={() => void savePrescription()}>{prescription ? 'Save draft changes' : 'Save prescription draft'}</button>
                       {prescription && <button className="button button--primary" disabled={saving} type="button" onClick={() => void finalizePrescription()}>Finalize prescription</button>}
                     </div>
                   </>
@@ -1471,21 +1632,34 @@ export function AdminDoctorsPage() {
 }
 
 export function NotificationsPage() {
-  const [items, setItems] = useState<NotificationItem[]>([])
+  const dispatch = useAppDispatch()
+  const items = useAppSelector((state) => state.notifications.items)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const load = useCallback(async () => {
-    try { setItems(await api.notifications()) }
+    try {
+      const [notifications, unreadCount] = await Promise.all([
+        api.notifications(),
+        api.unreadNotificationCount(),
+      ])
+      dispatch(syncNotifications({ items: notifications, unreadCount }))
+    }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to load notifications.') }
     finally { setLoading(false) }
-  }, [])
+  }, [dispatch])
   useEffect(() => { void load() }, [load])
   const markRead = async (id: string) => {
-    try { await api.markNotificationRead(id); setItems(items.map((item) => item.id === id ? { ...item, is_read: true } : item)) }
+    try {
+      await api.markNotificationRead(id)
+      dispatch(markNotificationRead(id))
+    }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to update notification.') }
   }
   const markAll = async () => {
-    try { await api.markAllNotificationsRead(); setItems(items.map((item) => ({ ...item, is_read: true }))) }
+    try {
+      await api.markAllNotificationsRead()
+      dispatch(markAllNotificationsRead())
+    }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'Unable to update notifications.') }
   }
   return <section className="page-content">

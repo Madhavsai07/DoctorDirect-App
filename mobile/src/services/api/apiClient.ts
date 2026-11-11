@@ -45,13 +45,23 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-/**
- * Response interceptor placeholder.
- * Global error handling (401 refresh, network errors) will be added later.
- */
+let sessionInvalidation: Promise<void> | null = null;
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(error),
+  async (error) => {
+    if (
+      axios.isAxiosError(error) &&
+      error.response?.status === 401 &&
+      error.config?.headers?.Authorization
+    ) {
+      sessionInvalidation ??= authService.logout().finally(() => {
+        sessionInvalidation = null;
+      });
+      await sessionInvalidation;
+    }
+    return Promise.reject(error);
+  },
 );
 
 export default apiClient;

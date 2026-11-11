@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
-import express from 'express';
 import { createServer } from 'node:http';
 import config from './src/config/env';
-import { createCorsMiddleware } from './src/middleware/cors.middleware';
+import createApp from './src/app';
 
 async function run(): Promise<void> {
   assert.ok(config.corsOrigins.includes('https://doctor-direct-app-ten.vercel.app'));
-  const app = express();
-  app.use(createCorsMiddleware(config.corsOrigins));
-  app.use((_req, res) => res.status(404).send('test route'));
+  const app = createApp();
 
   const server = createServer(app);
   await new Promise<void>((resolve, reject) => {
@@ -57,7 +54,11 @@ async function run(): Promise<void> {
 
     const native = await fetch(`${baseUrl}/test`);
     assert.equal(native.status, 404);
+    assert.equal(native.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(native.headers.get('x-frame-options'), 'DENY');
+    assert.equal(native.headers.get('x-powered-by'), null);
     console.log('PASS: originless native-style request passes the CORS gate.');
+    console.log('PASS: API security headers are present.');
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
