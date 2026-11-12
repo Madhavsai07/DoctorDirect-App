@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarDays, Check, Clock3, FileText, RefreshCw, Search, Stethoscope, UserRound, Video, X } from 'lucide-react'
+import { CalendarDays, Check, Clock3, Download, FileText, RefreshCw, Search, Stethoscope, UserRound, Video, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -587,6 +587,7 @@ export function PatientPrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [downloadError, setDownloadError] = useState('')
   const load = useCallback(async () => {
     setError('')
     try { setPrescriptions(await api.patientPrescriptions()) }
@@ -594,10 +595,96 @@ export function PatientPrescriptionsPage() {
     finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
+
+  const downloadPrescription = (prescription: Prescription) => {
+    setDownloadError('')
+    try {
+      const medicines = Array.isArray(prescription.medicines)
+        ? prescription.medicines
+        : JSON.parse(prescription.medicines) as unknown
+      if (!Array.isArray(medicines)) throw new Error('This prescription has an invalid medicine list.')
+
+      const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character]!)
+      const text = (value: unknown) => escapeHtml(typeof value === 'string' ? value : '')
+      const date = prescription.slot_date
+        ? new Date(`${prescription.slot_date}T12:00:00`).toLocaleDateString()
+        : ''
+      const medicineRows = medicines.map((medicine, index) => {
+        if (!medicine || typeof medicine !== 'object') {
+          throw new Error('This prescription has invalid medicine details.')
+        }
+        const item = medicine as Record<string, unknown>
+        return `<tr>
+          <td>${index + 1}. ${text(item.name)}</td>
+          <td>${text(item.dosage)}</td>
+          <td>${text(item.frequency)}</td>
+          <td>${text(item.duration)}</td>
+          <td>${text(item.instructions)}</td>
+        </tr>`
+      }).join('')
+
+      const popup = window.open('', '_blank')
+      if (!popup) throw new Error('Allow pop-ups to download your prescription.')
+
+      popup.opener = null
+      popup.document.write(`<!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <title>Prescription - ${text(prescription.diagnosis)}</title>
+            <style>
+              body { margin: 0; padding: 40px; color: #172033; font: 14px/1.5 Arial, sans-serif; }
+              main { max-width: 800px; margin: auto; }
+              header { border-bottom: 2px solid #1e40af; padding-bottom: 18px; }
+              h1 { margin: 0 0 5px; color: #1e40af; font-size: 24px; }
+              h2 { margin: 26px 0 8px; font-size: 16px; }
+              p { margin: 5px 0; }
+              table { width: 100%; border-collapse: collapse; }
+              th, td { padding: 9px 7px; border: 1px solid #cbd5e1; text-align: left; vertical-align: top; }
+              th { background: #eff6ff; }
+              footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #cbd5e1; color: #64748b; font-size: 12px; }
+              @media print { body { padding: 0; } }
+            </style>
+          </head>
+          <body><main>
+            <header>
+              <h1>Digital Prescription</h1>
+              <p>DoctorDirect · Digitally signed medical record</p>
+            </header>
+            <h2>Doctor and consultation</h2>
+            <p><strong>Doctor:</strong> Dr. ${text(prescription.doctor_first_name)} ${text(prescription.doctor_last_name)}</p>
+            <p><strong>Specialization:</strong> ${text(prescription.specialization_name || 'Doctor')}</p>
+            ${date ? `<p><strong>Consultation date:</strong> ${text(date)}</p>` : ''}
+            <h2>Diagnosis</h2>
+            <p>${text(prescription.diagnosis)}</p>
+            <h2>Prescribed medicines</h2>
+            <table>
+              <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+              <tbody>${medicineRows}</tbody>
+            </table>
+            ${prescription.general_advice ? `<h2>Doctor's advice</h2><p>${text(prescription.general_advice)}</p>` : ''}
+            ${prescription.signed_at ? `<footer>Signed on ${text(new Date(prescription.signed_at).toLocaleString())}. Verified by DoctorDirect.</footer>` : ''}
+          </main></body>
+        </html>`)
+      popup.document.close()
+      popup.focus()
+      popup.print()
+    } catch (downloadFailure) {
+      setDownloadError(downloadFailure instanceof Error ? downloadFailure.message : 'Unable to prepare this prescription for download.')
+    }
+  }
+
   return (
     <section className="page-content">
       <PageHeading eyebrow="PATIENT WORKSPACE" title="Prescriptions" description="Your signed prescriptions from completed consultations." />
       {error && <PageNotice message={error} onRetry={() => void load()} />}
+      {downloadError && <PageNotice message={downloadError} />}
       {loading ? <LoadingIndicator label="Loading prescriptions" /> : prescriptions.length ? prescriptions.map((item) => {
         const medicines = Array.isArray(item.medicines) ? item.medicines : []
         return <article className="data-card prescription-card" key={item.id}>
@@ -607,6 +694,11 @@ export function PatientPrescriptionsPage() {
             <ul className="medicine-list">{medicines.map((medicine, index) => <li key={`${medicine.name}-${index}`}><strong>{medicine.name}</strong> — {medicine.dosage}, {medicine.frequency}, {medicine.duration}{medicine.instructions ? ` · ${medicine.instructions}` : ''}</li>)}</ul>
             {item.general_advice && <p className="data-card__detail">Advice: {item.general_advice}</p>}
           </div></div>
+          <div className="data-card__actions">
+            <button className="button button--secondary" type="button" onClick={() => downloadPrescription(item)}>
+              <Download size={15} /> Download PDF
+            </button>
+          </div>
         </article>
       }) : <EmptyState title="No signed prescriptions" description="Signed prescriptions from your visits will appear here." />}
     </section>
