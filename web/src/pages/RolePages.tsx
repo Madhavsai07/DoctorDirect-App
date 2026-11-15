@@ -588,6 +588,7 @@ export function PatientPrescriptionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [downloadError, setDownloadError] = useState('')
+  const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null)
   const load = useCallback(async () => {
     setError('')
     try { setPrescriptions(await api.patientPrescriptions()) }
@@ -688,7 +689,19 @@ export function PatientPrescriptionsPage() {
       {loading ? <LoadingIndicator label="Loading prescriptions" /> : prescriptions.length ? prescriptions.map((item) => {
         const medicines = Array.isArray(item.medicines) ? item.medicines : []
         return <article className="data-card prescription-card" key={item.id}>
-          <div className="data-card__main"><div className="data-card__avatar"><FileText size={20} /></div><div className="data-card__body">
+          <div
+            className="data-card__main"
+            role="button"
+            tabIndex={0}
+            aria-label={`View prescription: ${item.diagnosis}`}
+            onClick={() => setSelectedPrescription(item)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setSelectedPrescription(item)
+              }
+            }}
+          ><div className="data-card__avatar"><FileText size={20} /></div><div className="data-card__body">
             <div className="data-card__title-row"><h3>{item.diagnosis}</h3><StatusBadge status="completed" /></div>
             <p className="data-card__meta">Dr. {item.doctor_first_name} {item.doctor_last_name} · {item.specialization_name ?? 'Doctor'}{item.slot_date ? ` · ${new Date(`${item.slot_date}T12:00:00`).toLocaleDateString()}` : ''}</p>
             <ul className="medicine-list">{medicines.map((medicine, index) => <li key={`${medicine.name}-${index}`}><strong>{medicine.name}</strong> — {medicine.dosage}, {medicine.frequency}, {medicine.duration}{medicine.instructions ? ` · ${medicine.instructions}` : ''}</li>)}</ul>
@@ -701,6 +714,38 @@ export function PatientPrescriptionsPage() {
           </div>
         </article>
       }) : <EmptyState title="No signed prescriptions" description="Signed prescriptions from your visits will appear here." />}
+      {selectedPrescription && <div className="modal-backdrop" role="presentation" onClick={() => setSelectedPrescription(null)}>
+        <section
+          className="workflow-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="prescription-detail-title"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button className="modal-close" type="button" aria-label="Close prescription details" onClick={() => setSelectedPrescription(null)}><X size={19} /></button>
+          <span className="eyebrow">SIGNED MEDICAL RECORD</span>
+          <h2 id="prescription-detail-title">{selectedPrescription.diagnosis}</h2>
+          <p>Dr. {selectedPrescription.doctor_first_name} {selectedPrescription.doctor_last_name} · {selectedPrescription.specialization_name ?? 'Doctor'}</p>
+          {selectedPrescription.slot_date && <p><strong>Consultation date:</strong> {new Date(`${selectedPrescription.slot_date}T12:00:00`).toLocaleDateString()}</p>}
+          <h3>Prescribed medicines</h3>
+          <ul className="medicine-list">
+            {(Array.isArray(selectedPrescription.medicines) ? selectedPrescription.medicines : []).map((medicine, index) => (
+              <li key={`${medicine.name}-${index}`}>
+                <strong>{medicine.name}</strong> — {medicine.dosage}, {medicine.frequency}, {medicine.duration}
+                {medicine.instructions ? ` · ${medicine.instructions}` : ''}
+              </li>
+            ))}
+          </ul>
+          {selectedPrescription.general_advice && <><h3>Doctor's advice</h3><p>{selectedPrescription.general_advice}</p></>}
+          {selectedPrescription.signed_at && <p className="muted-copy">Digitally signed on {new Date(selectedPrescription.signed_at).toLocaleString()}.</p>}
+          <div className="modal-actions">
+            <button className="button button--secondary" type="button" onClick={() => setSelectedPrescription(null)}>Close</button>
+            <button className="button button--primary" type="button" onClick={() => downloadPrescription(selectedPrescription)}>
+              <Download size={15} /> Download PDF
+            </button>
+          </div>
+        </section>
+      </div>}
     </section>
   )
 }

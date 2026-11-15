@@ -310,6 +310,8 @@ body { background: #f8fafc; color: #0f172a; }
 .doctor-card__footer strong { color: #0f172a; font-size: 14px; }
 .data-card, .notification-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 11px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
 .data-card__main { display: flex; min-width: 0; align-items: flex-start; gap: 12px; }
+.prescription-card .data-card__main { cursor: pointer; }
+.prescription-card .data-card__main:focus-visible { border-radius: 8px; outline: 2px solid #3b82f6; outline-offset: 4px; }
 .data-card__avatar { flex: 0 0 auto; }
 .data-card__body { min-width: 0; }
 .appointment-card .data-card__main,
