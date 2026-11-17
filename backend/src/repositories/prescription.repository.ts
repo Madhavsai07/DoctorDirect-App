@@ -46,6 +46,11 @@ export interface DbPrescriptionDetail extends DbPrescription {
   slot_date?: string;
   slot_start_time?: string;
   slot_end_time?: string;
+  symptoms?: string | null;
+  consultation_diagnosis?: string | null;
+  clinical_notes?: string | null;
+  treatment_plan?: string | null;
+  follow_up_instructions?: string | null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,6 +69,11 @@ const DETAIL_SELECT = `
     p.signed_at,
     p.created_at,
     p.updated_at,
+    c.symptoms,
+    c.diagnosis AS consultation_diagnosis,
+    c.clinical_notes,
+    c.treatment_plan,
+    c.follow_up_instructions,
     doc_u.first_name AS doctor_first_name,
     doc_u.last_name AS doctor_last_name,
     d.qualification AS doctor_qualification,

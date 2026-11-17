@@ -781,7 +781,7 @@ export function PatientPrescriptionsPage() {
       }) : <EmptyState title="No signed prescriptions" description="Signed prescriptions from your visits will appear here." />}
       {selectedPrescription && <div className="modal-backdrop" role="presentation" onClick={() => setSelectedPrescription(null)}>
         <section
-          className="workflow-modal"
+          className="workflow-modal workflow-modal--wide"
           role="dialog"
           aria-modal="true"
           aria-labelledby="prescription-detail-title"
@@ -792,6 +792,18 @@ export function PatientPrescriptionsPage() {
           <h2 id="prescription-detail-title">{selectedPrescription.diagnosis}</h2>
           <p>Dr. {selectedPrescription.doctor_first_name} {selectedPrescription.doctor_last_name} · {selectedPrescription.specialization_name ?? 'Doctor'}</p>
           {selectedPrescription.slot_date && <p><strong>Consultation date:</strong> {new Date(`${selectedPrescription.slot_date}T12:00:00`).toLocaleDateString()}</p>}
+          <div className="patient-report">
+            <section className="patient-report__section">
+              <h3>Consultation report</h3>
+              <dl className="patient-report__summary">
+                <div><dt>Symptoms</dt><dd>{selectedPrescription.symptoms || 'Not recorded'}</dd></div>
+                <div><dt>Diagnosis</dt><dd>{selectedPrescription.consultation_diagnosis || 'Not recorded'}</dd></div>
+                <div><dt>Clinical notes</dt><dd>{selectedPrescription.clinical_notes || 'Not recorded'}</dd></div>
+                <div><dt>Treatment plan</dt><dd>{selectedPrescription.treatment_plan || 'Not recorded'}</dd></div>
+                <div><dt>Follow-up instructions</dt><dd>{selectedPrescription.follow_up_instructions || 'Not recorded'}</dd></div>
+              </dl>
+            </section>
+          </div>
           <h3>Prescribed medicines</h3>
           <div className="prescription-table-wrap">
             <table className="prescription-table">

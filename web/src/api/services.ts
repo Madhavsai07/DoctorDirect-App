@@ -326,6 +326,11 @@ export interface Prescription {
   doctor_last_name?: string
   specialization_name?: string
   slot_date?: string
+  symptoms?: string | null
+  consultation_diagnosis?: string | null
+  clinical_notes?: string | null
+  treatment_plan?: string | null
+  follow_up_instructions?: string | null
 }
 
 export interface Consultation {
