@@ -444,8 +444,11 @@ export function PatientAppointmentsPage() {
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming')
   const [viewingConsultation, setViewingConsultation] = useState<Appointment | null>(null)
   const [consultation, setConsultation] = useState<Consultation | null>(null)
+  const [consultationPrescription, setConsultationPrescription] = useState<Prescription | null>(null)
   const [callOpen, setCallOpen] = useState(false)
   const [consultationLoading, setConsultationLoading] = useState(false)
+  const [prescriptionLoading, setPrescriptionLoading] = useState(false)
+  const [prescriptionError, setPrescriptionError] = useState('')
   const consultationRequestId = useRef(0)
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null)
   const [cancelReason, setCancelReason] = useState('')
@@ -484,12 +487,29 @@ export function PatientAppointmentsPage() {
     const requestId = ++consultationRequestId.current
     setViewingConsultation(appointment)
     setConsultation(null)
+    setConsultationPrescription(null)
+    setPrescriptionError('')
     setCallOpen(false)
     setConsultationLoading(true)
     setError('')
     try {
       const activeConsultation = await api.consultation(appointment.id)
-      if (requestId === consultationRequestId.current) setConsultation(activeConsultation)
+      if (requestId === consultationRequestId.current) {
+        setConsultation(activeConsultation)
+        if (activeConsultation.status === 'completed') {
+          setPrescriptionLoading(true)
+          try {
+            const prescription = await api.prescriptionsForConsultation(activeConsultation.id)
+            if (requestId === consultationRequestId.current) setConsultationPrescription(prescription)
+          } catch (requestError) {
+            if (requestId === consultationRequestId.current) {
+              setPrescriptionError(requestError instanceof Error ? requestError.message : 'Unable to load the prescription.')
+            }
+          } finally {
+            if (requestId === consultationRequestId.current) setPrescriptionLoading(false)
+          }
+        }
+      }
     } catch (requestError) {
       if (requestId === consultationRequestId.current) {
         setError(requestError instanceof Error ? requestError.message : 'Unable to load consultation.')
@@ -539,19 +559,64 @@ export function PatientAppointmentsPage() {
         {!slots.length && <p className="muted-copy">No available replacement slots were found in the next 30 days.</p>}
       </section></div>}
       {viewingConsultation && <div className="modal-backdrop" role="presentation" onClick={() => { consultationRequestId.current += 1; setViewingConsultation(null); setCallOpen(false) }}>
-        <section className="workflow-modal" role="dialog" aria-modal="true" aria-labelledby="patient-consult-title" onClick={(event) => event.stopPropagation()}>
+        <section className="workflow-modal workflow-modal--wide" role="dialog" aria-modal="true" aria-labelledby="patient-consult-title" onClick={(event) => event.stopPropagation()}>
           <button className="modal-close" type="button" aria-label="Close" onClick={() => { consultationRequestId.current += 1; setViewingConsultation(null); setCallOpen(false) }}><X size={19} /></button>
           <span className="eyebrow">CONSULTATION · DR. {viewingConsultation.doctor_first_name} {viewingConsultation.doctor_last_name}</span>
           <h2 id="patient-consult-title">{consultation?.status === 'in_progress' ? 'Consultation' : 'Visit notes'}</h2>
           {consultationLoading ? <LoadingIndicator label="Loading consultation notes" /> : consultation
             ? consultation.status === 'completed'
-              ? <dl className="detail-list detail-list--single">
-                  <div><dt>Symptoms</dt><dd>{consultation.symptoms || 'Not recorded'}</dd></div>
-                  <div><dt>Diagnosis</dt><dd>{consultation.diagnosis || 'Not recorded'}</dd></div>
-                  <div><dt>Clinical notes</dt><dd>{consultation.clinical_notes || 'Not recorded'}</dd></div>
-                  <div><dt>Treatment plan</dt><dd>{consultation.treatment_plan || 'Not recorded'}</dd></div>
-                  <div><dt>Follow-up instructions</dt><dd>{consultation.follow_up_instructions || 'Not recorded'}</dd></div>
-                </dl>
+              ? <div className="patient-report">
+                  <section className="patient-report__section">
+                    <h3>Visit summary</h3>
+                    <dl className="patient-report__summary">
+                      <div><dt>Diagnosis</dt><dd>{consultation.diagnosis || 'Not recorded'}</dd></div>
+                      <div><dt>Symptoms</dt><dd>{consultation.symptoms || 'Not recorded'}</dd></div>
+                    </dl>
+                  </section>
+                  <section className="patient-report__section">
+                    <h3>Clinical notes</h3>
+                    <p>{consultation.clinical_notes || 'Not recorded'}</p>
+                  </section>
+                  <section className="patient-report__section">
+                    <h3>Treatment plan</h3>
+                    <p>{consultation.treatment_plan || 'Not recorded'}</p>
+                  </section>
+                  <section className="patient-report__section">
+                    <h3>Follow-up instructions</h3>
+                    <p>{consultation.follow_up_instructions || 'Not recorded'}</p>
+                  </section>
+                  <section className="patient-report__section">
+                    <h3>Prescription</h3>
+                    {prescriptionLoading ? <LoadingIndicator label="Loading prescription" />
+                      : prescriptionError ? <PageNotice message={prescriptionError} />
+                        : consultationPrescription ? <>
+                          <div className="patient-report__prescription-heading">
+                            <strong>{consultationPrescription.diagnosis || consultation.diagnosis || 'Prescription'}</strong>
+                            <span className="status-badge status-badge--success">Signed</span>
+                          </div>
+                          <div className="prescription-table-wrap">
+                            <table className="prescription-table">
+                              <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+                              <tbody>
+                                {parsePrescriptionMedicines(consultationPrescription.medicines).map((medicine, index) => (
+                                  <tr key={`${medicine.name}-${index}`}>
+                                    <td data-label="Medicine">{medicine.name || '—'}</td>
+                                    <td data-label="Dosage">{medicine.dosage || '—'}</td>
+                                    <td data-label="Frequency">{medicine.frequency || '—'}</td>
+                                    <td data-label="Duration">{medicine.duration || '—'}</td>
+                                    <td data-label="Instructions">{medicine.instructions || '—'}</td>
+                                  </tr>
+                                ))}
+                                {!parsePrescriptionMedicines(consultationPrescription.medicines).length && (
+                                  <tr><td className="prescription-table__empty" colSpan={5}>No medicines listed.</td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                          {consultationPrescription.general_advice && <p className="patient-report__advice"><strong>Doctor's advice:</strong> {consultationPrescription.general_advice}</p>}
+                        </> : <p>No signed prescription was issued for this visit.</p>}
+                  </section>
+                </div>
               : <p className="muted-copy">Your consultation is in progress. Join the video call to continue with your doctor.</p>
             : <PageNotice message={error || 'No consultation details are available.'} />}
           {consultation?.status === 'in_progress' && <div className="modal-actions">
@@ -687,7 +752,7 @@ export function PatientPrescriptionsPage() {
       {error && <PageNotice message={error} onRetry={() => void load()} />}
       {downloadError && <PageNotice message={downloadError} />}
       {loading ? <LoadingIndicator label="Loading prescriptions" /> : prescriptions.length ? prescriptions.map((item) => {
-        const medicines = Array.isArray(item.medicines) ? item.medicines : []
+        const medicines = parsePrescriptionMedicines(item.medicines)
         return <article className="data-card prescription-card" key={item.id}>
           <div
             className="data-card__main"
@@ -728,14 +793,25 @@ export function PatientPrescriptionsPage() {
           <p>Dr. {selectedPrescription.doctor_first_name} {selectedPrescription.doctor_last_name} · {selectedPrescription.specialization_name ?? 'Doctor'}</p>
           {selectedPrescription.slot_date && <p><strong>Consultation date:</strong> {new Date(`${selectedPrescription.slot_date}T12:00:00`).toLocaleDateString()}</p>}
           <h3>Prescribed medicines</h3>
-          <ul className="medicine-list">
-            {(Array.isArray(selectedPrescription.medicines) ? selectedPrescription.medicines : []).map((medicine, index) => (
-              <li key={`${medicine.name}-${index}`}>
-                <strong>{medicine.name}</strong> — {medicine.dosage}, {medicine.frequency}, {medicine.duration}
-                {medicine.instructions ? ` · ${medicine.instructions}` : ''}
-              </li>
-            ))}
-          </ul>
+          <div className="prescription-table-wrap">
+            <table className="prescription-table">
+              <thead><tr><th>Medicine</th><th>Dosage</th><th>Frequency</th><th>Duration</th><th>Instructions</th></tr></thead>
+              <tbody>
+                {parsePrescriptionMedicines(selectedPrescription.medicines).map((medicine, index) => (
+                  <tr key={`${medicine.name}-${index}`}>
+                    <td data-label="Medicine">{medicine.name || '—'}</td>
+                    <td data-label="Dosage">{medicine.dosage || '—'}</td>
+                    <td data-label="Frequency">{medicine.frequency || '—'}</td>
+                    <td data-label="Duration">{medicine.duration || '—'}</td>
+                    <td data-label="Instructions">{medicine.instructions || '—'}</td>
+                  </tr>
+                ))}
+                {!parsePrescriptionMedicines(selectedPrescription.medicines).length
+                  ? <tr><td className="prescription-table__empty" colSpan={5}>No medicines listed.</td></tr>
+                  : null}
+              </tbody>
+            </table>
+          </div>
           {selectedPrescription.general_advice && <><h3>Doctor's advice</h3><p>{selectedPrescription.general_advice}</p></>}
           {selectedPrescription.signed_at && <p className="muted-copy">Digitally signed on {new Date(selectedPrescription.signed_at).toLocaleString()}.</p>}
           <div className="modal-actions">
